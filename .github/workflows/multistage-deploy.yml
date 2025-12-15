@@ -325,7 +325,7 @@ jobs:
 
           # Capture endpoints
           WEB_URL=$(azd env get-value SERVICE_WEBFRONTEND_ENDPOINT_URL 2>/dev/null || echo "Not available")
-          API_URL=$(azd env get-value SERVICE_APISERVICE_ENDPOINT_URL 2>/dev/null || echo "Not available")
+          API_URL=$(azd env get-value SERVICE_WEATHERSERVICE_ENDPOINT_URL 2>/dev/null || echo "Not available")
 
           echo "web_url=$WEB_URL" >> $GITHUB_OUTPUT
           echo "api_url=$API_URL" >> $GITHUB_OUTPUT
