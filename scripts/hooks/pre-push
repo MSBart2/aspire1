@@ -1,0 +1,24 @@
+#!/usr/bin/env pwsh
+
+# Pre-push hook to prevent direct pushes to main/master branches
+# This enforces a branching strategy where all work must be done on feature branches
+
+$branch = git symbolic-ref --short HEAD 2>$null
+
+if ($branch -eq "main" -or $branch -eq "master") {
+    Write-Host ""
+    Write-Host "❌ ERROR: Direct pushes to '$branch' branch are not allowed!" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "This repository enforces a branching strategy." -ForegroundColor Yellow
+    Write-Host "Please push to a feature branch and create a Pull Request:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  git checkout -b feature/your-feature-name" -ForegroundColor Cyan
+    Write-Host "  git push -u origin feature/your-feature-name" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Then create a Pull Request to merge into $branch." -ForegroundColor Yellow
+    Write-Host ""
+    exit 1
+}
+
+# Allow push to proceed
+exit 0

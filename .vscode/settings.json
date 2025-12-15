@@ -1,0 +1,49 @@
+{
+  // Aspire solution settings
+  "dotnet.defaultSolution": "aspire1.sln",
+
+  // Aspire dashboard auto-start
+  "aspire.autostartDashboard": true,
+
+  // File exclusions (hide build artifacts)
+  "files.exclude": {
+    "**/bin": true,
+    "**/obj": true,
+    "**/.vs": true
+  },
+
+  // File watcher exclusions (performance)
+  "files.watcherExclude": {
+    "**/bin/**": true,
+    "**/obj/**": true,
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true
+  },
+
+  // C# formatting
+  "omnisharp.enableEditorConfigSupport": true,
+  "omnisharp.enableRoslynAnalyzers": true,
+
+  // Auto-save
+  "files.autoSave": "afterDelay",
+  "files.autoSaveDelay": 1000,
+
+  // Terminal default
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+
+  // Debug console settings
+  "debug.console.fontSize": 14,
+  "debug.console.lineHeight": 20,
+
+  // Recommended extensions banner
+  "extensions.ignoreRecommendations": false,
+
+  // Azure configuration
+  "azure.cloudName": "AzureCloud",
+
+  // Git configuration
+  "git.autofetch": true,
+  "git.confirmSync": false,
+  "git.enableSmartCommit": true
+}

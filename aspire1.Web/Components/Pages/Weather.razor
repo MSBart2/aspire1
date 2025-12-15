@@ -1,0 +1,53 @@
+﻿@page "/weather"
+@attribute [StreamRendering(true)]
+@attribute [OutputCache(Duration = 5)]
+@using Microsoft.FeatureManagement
+
+@inject WeatherApiClient WeatherApi
+@inject IFeatureManager FeatureManager
+
+<PageTitle>Weather</PageTitle>
+
+<h1>Weather Forecast</h1>
+
+@if (!featureEnabled)
+{
+    <div class="alert alert-warning">
+        <h4>⚠️ Feature Disabled</h4>
+        <p>The weather forecast feature is currently disabled. Please contact your administrator.</p>
+    </div>
+}
+else if (forecasts == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="row">
+        @foreach (var forecast in forecasts)
+        {
+            <div class="col-md-6 col-lg-4">
+                <WeatherCard Forecast="@forecast" ShowHumidity="@showHumidity" />
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private WeatherForecast[]? forecasts;
+    private bool featureEnabled = true;
+    private bool showHumidity = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if feature is enabled
+        featureEnabled = await FeatureManager.IsEnabledAsync("WeatherForecast");
+
+        if (featureEnabled)
+        {
+            // Check humidity feature flag once for all cards
+            showHumidity = await FeatureManager.IsEnabledAsync("WeatherHumidity");
+            forecasts = await WeatherApi.GetWeatherAsync();
+        }
+    }
+}

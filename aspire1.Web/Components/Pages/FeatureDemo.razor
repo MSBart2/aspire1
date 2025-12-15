@@ -1,0 +1,106 @@
+@page "/features"
+@using Microsoft.FeatureManagement
+@inject IFeatureManager FeatureManager
+
+<PageTitle>Feature Flags Demo</PageTitle>
+
+<h1>Feature Flags Demo</h1>
+
+<p>This page demonstrates Azure App Configuration feature flags with real-time updates (30-second refresh).</p>
+
+@if (isLoading)
+{
+    <p><em>Loading feature flags...</em></p>
+}
+else
+{
+    <div class="alert alert-info">
+        <h4>📊 Current Feature States</h4>
+        <ul>
+            <li><strong>WeatherForecast:</strong> @(weatherForecastEnabled ? "✅ Enabled" : "❌ Disabled")</li>
+            <li><strong>DetailedHealth:</strong> @(detailedHealthEnabled ? "✅ Enabled" : "❌ Disabled")</li>
+        </ul>
+        <p class="mb-0"><small>Last checked: @lastChecked.ToString("HH:mm:ss")</small></p>
+    </div>
+
+    @if (weatherForecastEnabled)
+    {
+        <div class="card mb-3">
+            <div class="card-header bg-success text-white">
+                WeatherForecast Feature - Enabled
+            </div>
+            <div class="card-body">
+                <p>The weather forecast feature is currently enabled. Users can access the <a href="/weather">/weather</a> page.
+                </p>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card mb-3">
+            <div class="card-header bg-danger text-white">
+                WeatherForecast Feature - Disabled
+            </div>
+            <div class="card-body">
+                <p>The weather forecast feature is currently disabled. The <a href="/weather">/weather</a> page may show a
+                    message or be hidden.</p>
+            </div>
+        </div>
+    }
+
+    @if (detailedHealthEnabled)
+    {
+        <div class="card mb-3">
+            <div class="card-header bg-success text-white">
+                DetailedHealth Feature - Enabled
+            </div>
+            <div class="card-body">
+                <p>Detailed health endpoints are currently enabled, providing version metadata and uptime information.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card mb-3">
+            <div class="card-header bg-danger text-white">
+                DetailedHealth Feature - Disabled
+            </div>
+            <div class="card-body">
+                <p>Detailed health endpoints are currently disabled, showing only basic health status.</p>
+            </div>
+        </div>
+    }
+
+    <div class="alert alert-warning">
+        <h5>🔧 Testing Feature Flags</h5>
+        <p><strong>Azure Portal:</strong></p>
+        <ol>
+            <li>Navigate to your Azure App Configuration resource</li>
+            <li>Go to "Feature manager" in the left menu</li>
+            <li>Toggle "WeatherForecast" or "DetailedHealth" on/off</li>
+            <li>Wait up to 30 seconds and refresh this page</li>
+        </ol>
+        <p class="mb-0"><strong>Azure CLI:</strong></p>
+        <pre><code>az appconfig feature set --name your-appconfig-name --feature WeatherForecast --yes</code></pre>
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private bool weatherForecastEnabled = false;
+    private bool detailedHealthEnabled = false;
+    private DateTime lastChecked = DateTime.Now;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CheckFeatureFlags();
+        isLoading = false;
+    }
+
+    private async Task CheckFeatureFlags()
+    {
+        weatherForecastEnabled = await FeatureManager.IsEnabledAsync("WeatherForecast");
+        detailedHealthEnabled = await FeatureManager.IsEnabledAsync("DetailedHealth");
+        lastChecked = DateTime.Now;
+    }
+}

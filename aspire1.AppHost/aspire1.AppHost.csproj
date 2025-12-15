@@ -1,0 +1,23 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.0.2">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>53d0fff8-96ad-42cc-987b-dab0c4b2cd4e</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.Azure.AppConfiguration" Version="13.0.2" />
+    <PackageReference Include="Aspire.Hosting.Azure.ApplicationInsights" Version="13.0.2" />
+    <PackageReference Include="Aspire.Hosting.Azure.Redis" Version="13.0.2" />
+    <PackageReference Include="Aspire.Hosting.Redis" Version="13.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\aspire1.WeatherService\aspire1.WeatherService.csproj" />
+    <ProjectReference Include="..\aspire1.Web\aspire1.Web.csproj" />
+  </ItemGroup>
+
+</Project>

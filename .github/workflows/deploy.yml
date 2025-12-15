@@ -1,0 +1,135 @@
+name: Deploy to Azure Container Apps
+
+on:
+  push:
+    tags:
+      - "v*"
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy to"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_ENV_NAME: ${{ github.event.inputs.environment || 'dev' }}
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # MinVer needs full git history
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Install MinVer CLI
+        run: dotnet tool install -g minver-cli --version 6.0.0
+
+      - name: Extract Version
+        id: version
+        run: |
+          VERSION=$(minver)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+          COMMIT_SHA=${GITHUB_SHA:0:7}
+          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "Commit SHA: $COMMIT_SHA"
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Azure Developer CLI
+        uses: azure/setup-azd@v1.0.0
+
+      - name: Set azd environment variables
+        run: |
+          azd env set VERSION ${{ steps.version.outputs.version }}
+          azd env set COMMIT_SHA ${{ steps.version.outputs.commit_sha }}
+          azd env set AZURE_ENV_NAME ${{ env.AZURE_ENV_NAME }}
+
+      - name: Provision and Deploy
+        run: |
+          azd auth login --client-id ${{ secrets.AZURE_CLIENT_ID }} \
+            --tenant-id ${{ secrets.AZURE_TENANT_ID }} \
+            --federated-credential-provider "github"
+
+          # Run azd up (provision + deploy in one shot)
+          azd up --no-prompt
+        env:
+          AZURE_ENV_NAME: ${{ env.AZURE_ENV_NAME }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'eastus' }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify Deployment
+        run: |
+          echo "✅ Deployment complete!"
+          echo "Version: ${{ steps.version.outputs.version }}"
+          echo "Commit: ${{ steps.version.outputs.commit_sha }}"
+          echo "Environment: ${{ env.AZURE_ENV_NAME }}"
+
+          # Get endpoint URLs from azd
+          API_ENDPOINT=$(azd env get-value SERVICE_APISERVICE_ENDPOINT_URL 2>/dev/null || echo "Not available")
+          WEB_ENDPOINT=$(azd env get-value SERVICE_WEBFRONTEND_ENDPOINT_URL 2>/dev/null || echo "Not available")
+
+          echo "API Service: $API_ENDPOINT"
+          echo "Web Frontend: $WEB_ENDPOINT"
+
+          # Test version endpoint if available
+          if [ "$API_ENDPOINT" != "Not available" ]; then
+            echo "Testing version endpoint..."
+            curl -f "$API_ENDPOINT/version" || echo "Version endpoint not yet available"
+          fi
+
+      - name: Create Release Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 🚀 Deployment Summary
+
+          **Version:** \`${{ steps.version.outputs.version }}\`
+          **Commit:** \`${{ steps.version.outputs.commit_sha }}\`
+          **Environment:** \`${{ env.AZURE_ENV_NAME }}\`
+          **Triggered by:** \`${{ github.event_name }}\`
+
+          ### 📊 Deployed Services
+          - **API Service:** aspire1-apiservice:${{ steps.version.outputs.version }}
+          - **Web Frontend:** aspire1-web:${{ steps.version.outputs.version }}
+
+          ### 🔗 Endpoints
+          Check Azure Portal for Container App URLs or use:
+          \`\`\`bash
+          azd show
+          \`\`\`
+          EOF
