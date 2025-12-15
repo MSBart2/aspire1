@@ -1,0 +1,39 @@
+@if (Forecast != null)
+{
+    <div class="card weather-card mb-3">
+        <div class="card-header bg-primary text-white">
+            <h5 class="card-title mb-0">@Forecast.Date.ToString("dddd, MMMM d")</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="weather-temp">
+                        <span class="display-4">@Forecast.TemperatureC°</span>
+                        <span class="text-muted">C</span>
+                    </div>
+                    <div class="text-muted">@Forecast.TemperatureF°F</div>
+                </div>
+                <div class="col-md-6">
+                    <div class="weather-summary">
+                        <h6 class="text-primary">@Forecast.Summary</h6>
+                        @if (ShowHumidity && Forecast.Humidity > 0)
+                        {
+                            <div class="humidity-info mt-2">
+                                <i class="bi bi-droplet-fill text-info" aria-hidden="true"></i>
+                                <strong>Humidity:</strong> @Forecast.Humidity%
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public WeatherForecast? Forecast { get; set; }
+
+    [Parameter]
+    public bool ShowHumidity { get; set; }
+}

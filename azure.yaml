@@ -1,0 +1,98 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: aspire1
+metadata:
+  template: aspire1@0.0.1-beta
+
+# Service definitions for Azure Container Apps
+services:
+  weatherservice:
+    project: ./aspire1.WeatherService
+    language: dotnet
+    host: containerapp
+
+  webfrontend:
+    project: ./aspire1.Web
+    language: dotnet
+    host: containerapp
+
+# Hooks for version management and container tagging
+hooks:
+  # Extract version before provisioning
+  preprovision:
+    windows:
+      shell: pwsh
+      run: |
+        Write-Host "Extracting version with MinVer..."
+        dotnet tool restore 2>&1 | Out-Null
+        if (-not (dotnet tool list -g | Select-String "minver-cli")) {
+          dotnet tool install -g minver-cli --version 6.0.0
+        }
+        $version = minver
+        Write-Host "Version: $version"
+        azd env set VERSION $version
+
+        $commitSha = if ($env:GITHUB_SHA) { $env:GITHUB_SHA.Substring(0,7) } else { (git rev-parse --short HEAD 2>$null) ?? "local" }
+        Write-Host "Commit SHA: $commitSha"
+        azd env set COMMIT_SHA $commitSha
+    posix:
+      shell: sh
+      run: |
+        echo "Extracting version with MinVer..."
+        dotnet tool restore 2>&1 > /dev/null
+        if ! dotnet tool list -g | grep -q minver-cli; then
+          dotnet tool install -g minver-cli --version 6.0.0
+        fi
+        VERSION=$(minver)
+        echo "Version: $VERSION"
+        azd env set VERSION $VERSION
+
+        COMMIT_SHA=${GITHUB_SHA:0:7}
+        if [ -z "$COMMIT_SHA" ]; then
+          COMMIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "local")
+        fi
+        echo "Commit SHA: $COMMIT_SHA"
+        azd env set COMMIT_SHA $COMMIT_SHA
+
+  # Configure App Configuration after provisioning
+  postprovision:
+    windows:
+      shell: pwsh
+      run: ./infra/hooks/postprovision.ps1
+    posix:
+      shell: sh
+      run: |
+        chmod +x ./infra/hooks/postprovision.sh
+        ./infra/hooks/postprovision.sh
+
+  # Tag containers before packaging
+  prepackage:
+    windows:
+      shell: pwsh
+      run: |
+        $version = azd env get-value VERSION
+        $registry = azd env get-value AZURE_CONTAINER_REGISTRY_ENDPOINT
+        Write-Host "Tagging containers with version $version for registry $registry"
+        azd env set CONTAINER_REGISTRY $registry
+    posix:
+      shell: sh
+      run: |
+        VERSION=$(azd env get-value VERSION)
+        REGISTRY=$(azd env get-value AZURE_CONTAINER_REGISTRY_ENDPOINT)
+        echo "Tagging containers with version $VERSION for registry $REGISTRY"
+        azd env set CONTAINER_REGISTRY $REGISTRY
+
+  # Post-deploy verification
+  postdeploy:
+    windows:
+      shell: pwsh
+      run: |
+        Write-Host "Deployment complete! Verifying version endpoints..."
+        $version = azd env get-value VERSION
+        Write-Host "Deployed version: $version"
+    posix:
+      shell: sh
+      run: |
+        echo "Deployment complete! Verifying version endpoints..."
+        VERSION=$(azd env get-value VERSION)
+        echo "Deployed version: $VERSION"

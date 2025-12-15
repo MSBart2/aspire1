@@ -1,0 +1,29 @@
+{
+  "recommendations": [
+    // .NET Development
+    "ms-dotnettools.csdevkit",
+    "ms-dotnettools.csharp",
+    "ms-dotnettools.vscode-dotnet-runtime",
+
+    // Aspire
+    "microsoft-aspire.aspire-vscode",
+
+    // Azure
+    "ms-azuretools.vscode-azure-github-copilot",
+    "ms-azuretools.vscode-azure-mcp-server",
+    "ms-azuretools.vscode-azureresourcegroups",
+    "ms-azuretools.vscode-containers",
+
+    // GitHub & Copilot
+    "github.copilot",
+    "github.copilot-chat",
+    "github.vscode-github-actions",
+
+    // DevOps & Productivity
+    "ms-vscode.powershell",
+    "ms-vscode-remote.remote-containers",
+    "mechatroner.rainbow-csv",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode"
+  ]
+}

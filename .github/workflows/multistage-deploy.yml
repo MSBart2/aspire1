@@ -1,0 +1,492 @@
+name: Multistage Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - stage
+          - prod
+      skip_tests:
+        description: "Skip test execution"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+  checks: write
+
+env:
+  DOTNET_VERSION: "9.0.x"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  # ============================================
+  # Stage 1: Build (Parallel with Tests)
+  # ============================================
+  build:
+    name: Build and Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit_sha: ${{ steps.version.outputs.commit_sha }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # MinVer needs full git history
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore dependencies
+        run: dotnet restore aspire1.sln
+
+      - name: Install MinVer CLI
+        run: dotnet tool install -g minver-cli --version 6.0.0
+
+      - name: Extract Version
+        id: version
+        run: |
+          VERSION=$(minver)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "✅ Extracted version: $VERSION"
+
+          COMMIT_SHA=${GITHUB_SHA:0:7}
+          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "✅ Commit SHA: $COMMIT_SHA"
+
+      - name: Build solution
+        run: dotnet build aspire1.sln --configuration Release --no-restore
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            **/bin/Release/**
+            !**/bin/Release/**/ref/**
+          retention-days: 1
+
+  # ============================================
+  # Stage 2: Test (Parallel Jobs)
+  # ============================================
+  test-web:
+    name: Test Web
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip_tests }}
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore dependencies
+        run: dotnet restore aspire1.Web.Tests/aspire1.Web.Tests.csproj
+
+      - name: Run Web Tests
+        run: dotnet test aspire1.Web.Tests/aspire1.Web.Tests.csproj --configuration Release --logger "trx;LogFileName=web-test-results.trx" --collect:"XPlat Code Coverage"
+
+      - name: Publish test results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: |
+            **/web-test-results.trx
+          check_name: Web Test Results
+
+  test-api:
+    name: Test API
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip_tests }}
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore dependencies
+        run: dotnet restore aspire1.WeatherService.Tests/aspire1.WeatherService.Tests.csproj
+
+      - name: Run API Tests
+        run: dotnet test aspire1.WeatherService.Tests/aspire1.WeatherService.Tests.csproj --configuration Release --logger "trx;LogFileName=api-test-results.trx" --collect:"XPlat Code Coverage"
+
+      - name: Publish test results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: |
+            **/api-test-results.trx
+          check_name: API Test Results
+
+  # ============================================
+  # Stage 3: Deploy to Dev
+  # ============================================
+  deploy-dev:
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    environment:
+      name: dev
+      url: ${{ steps.deploy.outputs.web_url }}
+    needs: [build, test-web, test-api]
+    if: |
+      always() &&
+      needs.build.result == 'success' &&
+      (inputs.skip_tests == true || (needs.test-web.result == 'success' && needs.test-api.result == 'success')) &&
+      (github.ref == 'refs/heads/main' || inputs.environment == 'dev')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID_DEV }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_DEV }}
+
+      - name: Install Azure Developer CLI
+        uses: azure/setup-azd@v1.0.0
+
+      - name: Configure azd environment
+        run: |
+          azd config set auth.useAzCliAuth true
+          # Create environment if it doesn't exist
+          if ! azd env list | grep -q "^dev$"; then
+            azd env new dev --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID_DEV }} --location ${{ vars.AZURE_LOCATION_DEV || 'eastus' }}
+          fi
+          azd env select dev
+          azd env set VERSION ${{ needs.build.outputs.version }}
+          azd env set COMMIT_SHA ${{ needs.build.outputs.commit_sha }}
+          azd env set AZURE_ENV_NAME dev
+
+      - name: Provision and Deploy to Dev
+        id: deploy
+        run: |
+          azd auth login --client-id ${{ secrets.AZURE_CLIENT_ID_DEV }} \
+            --tenant-id ${{ secrets.AZURE_TENANT_ID }} \
+            --federated-credential-provider "github"
+
+          azd up --no-prompt
+
+          # Capture endpoints
+          WEB_URL=$(azd env get-value SERVICE_WEBFRONTEND_ENDPOINT_URL 2>/dev/null || echo "Not available")
+          API_URL=$(azd env get-value SERVICE_WEATHERSERVICE_ENDPOINT_URL 2>/dev/null || echo "Not available")
+
+          echo "web_url=$WEB_URL" >> $GITHUB_OUTPUT
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+        env:
+          AZURE_ENV_NAME: dev
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION_DEV || 'eastus' }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID_DEV }}
+
+      - name: Verify Dev Deployment
+        run: |
+          echo "✅ Deployment to Dev complete!"
+          echo "Version: ${{ needs.build.outputs.version }}"
+          echo "Environment: dev"
+
+          # Test version endpoint if available
+          API_URL="${{ steps.deploy.outputs.api_url }}"
+          if [ "$API_URL" != "Not available" ]; then
+            echo "Testing version endpoint..."
+            curl -f "$API_URL/version" || echo "⚠️  Version endpoint not yet available"
+          fi
+
+      - name: Create deployment summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 🚀 Dev Deployment Summary
+
+          **Version:** \`${{ needs.build.outputs.version }}\`
+          **Commit:** \`${{ needs.build.outputs.commit_sha }}\`
+          **Environment:** \`dev\`
+
+          ### 🔗 Endpoints
+          - **Web:** ${{ steps.deploy.outputs.web_url }}
+          - **API:** ${{ steps.deploy.outputs.api_url }}
+          EOF
+
+  # ============================================
+  # Stage 4: Deploy to Stage
+  # ============================================
+  deploy-stage:
+    name: Deploy to Stage
+    runs-on: ubuntu-latest
+    environment:
+      name: stage
+      url: ${{ steps.deploy.outputs.web_url }}
+    needs: [build, deploy-dev]
+    if: |
+      always() &&
+      needs.build.result == 'success' &&
+      needs.deploy-dev.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/v') || inputs.environment == 'stage')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID_STAGE }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_STAGE }}
+
+      - name: Install Azure Developer CLI
+        uses: azure/setup-azd@v1.0.0
+
+      - name: Configure azd environment
+        run: |
+          azd config set auth.useAzCliAuth true
+          # Create environment if it doesn't exist
+          if ! azd env list | grep -q "^stage$"; then
+            azd env new stage --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID_STAGE }} --location ${{ vars.AZURE_LOCATION_STAGE || 'eastus' }}
+          fi
+          azd env select stage
+          azd env set VERSION ${{ needs.build.outputs.version }}
+          azd env set COMMIT_SHA ${{ needs.build.outputs.commit_sha }}
+          azd env set AZURE_ENV_NAME stage
+
+      - name: Provision and Deploy to Stage
+        id: deploy
+        run: |
+          azd auth login --client-id ${{ secrets.AZURE_CLIENT_ID_STAGE }} \
+            --tenant-id ${{ secrets.AZURE_TENANT_ID }} \
+            --federated-credential-provider "github"
+
+          azd up --no-prompt
+
+          # Capture endpoints
+          WEB_URL=$(azd env get-value SERVICE_WEBFRONTEND_ENDPOINT_URL 2>/dev/null || echo "Not available")
+          API_URL=$(azd env get-value SERVICE_APISERVICE_ENDPOINT_URL 2>/dev/null || echo "Not available")
+
+          echo "web_url=$WEB_URL" >> $GITHUB_OUTPUT
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+        env:
+          AZURE_ENV_NAME: stage
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION_STAGE || 'eastus' }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID_STAGE }}
+
+      - name: Verify Stage Deployment
+        run: |
+          echo "✅ Deployment to Stage complete!"
+          echo "Version: ${{ needs.build.outputs.version }}"
+          echo "Environment: stage"
+
+          # Test version endpoint if available
+          API_URL="${{ steps.deploy.outputs.api_url }}"
+          if [ "$API_URL" != "Not available" ]; then
+            echo "Testing version endpoint..."
+            curl -f "$API_URL/version" || echo "⚠️  Version endpoint not yet available"
+          fi
+
+      - name: Create deployment summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 🚀 Stage Deployment Summary
+
+          **Version:** \`${{ needs.build.outputs.version }}\`
+          **Commit:** \`${{ needs.build.outputs.commit_sha }}\`
+          **Environment:** \`stage\`
+
+          ### 🔗 Endpoints
+          - **Web:** ${{ steps.deploy.outputs.web_url }}
+          - **API:** ${{ steps.deploy.outputs.api_url }}
+          EOF
+
+  # ============================================
+  # Stage 5: Deploy to Prod
+  # ============================================
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment:
+      name: prod
+      url: ${{ steps.deploy.outputs.web_url }}
+    needs: [build, deploy-stage]
+    if: |
+      always() &&
+      needs.build.result == 'success' &&
+      needs.deploy-stage.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/v') || inputs.environment == 'prod')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID_PROD }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_PROD }}
+
+      - name: Install Azure Developer CLI
+        uses: azure/setup-azd@v1.0.0
+
+      - name: Configure azd environment
+        run: |
+          azd config set auth.useAzCliAuth true
+          # Create environment if it doesn't exist
+          if ! azd env list | grep -q "^prod$"; then
+            azd env new prod --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID_PROD }} --location ${{ vars.AZURE_LOCATION_PROD || 'eastus' }}
+          fi
+          azd env select prod
+          azd env set VERSION ${{ needs.build.outputs.version }}
+          azd env set COMMIT_SHA ${{ needs.build.outputs.commit_sha }}
+          azd env set AZURE_ENV_NAME prod
+
+      - name: Provision and Deploy to Production
+        id: deploy
+        run: |
+          azd auth login --client-id ${{ secrets.AZURE_CLIENT_ID_PROD }} \
+            --tenant-id ${{ secrets.AZURE_TENANT_ID }} \
+            --federated-credential-provider "github"
+
+          azd up --no-prompt
+
+          # Capture endpoints
+          WEB_URL=$(azd env get-value SERVICE_WEBFRONTEND_ENDPOINT_URL 2>/dev/null || echo "Not available")
+          API_URL=$(azd env get-value SERVICE_WEATHERSERVICE_ENDPOINT_URL 2>/dev/null || echo "Not available")
+
+          echo "web_url=$WEB_URL" >> $GITHUB_OUTPUT
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+        env:
+          AZURE_ENV_NAME: prod
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION_PROD || 'eastus' }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID_PROD }}
+
+      - name: Verify Production Deployment
+        run: |
+          echo "✅ Deployment to Production complete!"
+          echo "Version: ${{ needs.build.outputs.version }}"
+          echo "Environment: prod"
+
+          # Test version endpoint if available
+          API_URL="${{ steps.deploy.outputs.api_url }}"
+          if [ "$API_URL" != "Not available" ]; then
+            echo "Testing version endpoint..."
+            curl -f "$API_URL/version" || echo "⚠️  Version endpoint not yet available"
+          fi
+
+      - name: Create deployment summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 🚀 Production Deployment Summary
+
+          **Version:** \`${{ needs.build.outputs.version }}\`
+          **Commit:** \`${{ needs.build.outputs.commit_sha }}\`
+          **Environment:** \`prod\`
+
+          ### 🔗 Endpoints
+          - **Web:** ${{ steps.deploy.outputs.web_url }}
+          - **API:** ${{ steps.deploy.outputs.api_url }}
+
+          ### 📋 Post-Deployment Checklist
+          - [ ] Verify application health endpoints
+          - [ ] Check Application Insights for errors
+          - [ ] Monitor custom metrics dashboard
+          - [ ] Validate feature flags are configured correctly
+          EOF
+
+  # ============================================
+  # Final Summary Job
+  # ============================================
+  deployment-summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [build, deploy-dev, deploy-stage, deploy-prod]
+    if: always()
+
+    steps:
+      - name: Generate overall summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 📊 Overall Pipeline Summary
+
+          **Version:** \`${{ needs.build.outputs.version }}\`
+          **Commit:** \`${{ needs.build.outputs.commit_sha }}\`
+          **Trigger:** \`${{ github.event_name }}\`
+
+          ### Stage Results
+          | Stage | Status |
+          |-------|--------|
+          | Build | ${{ needs.build.result == 'success' && '✅ Success' || '❌ Failed' }} |
+          | Dev | ${{ needs.deploy-dev.result == 'success' && '✅ Deployed' || needs.deploy-dev.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
+          | Stage | ${{ needs.deploy-stage.result == 'success' && '✅ Deployed' || needs.deploy-stage.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
+          | Prod | ${{ needs.deploy-prod.result == 'success' && '✅ Deployed' || needs.deploy-prod.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
+          EOF

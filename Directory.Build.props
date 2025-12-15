@@ -1,0 +1,26 @@
+<Project>
+  <PropertyGroup>
+    <!-- MinVer: Automatic SemVer from git tags -->
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+    <MinVerMinimumMajorMinor>1.0</MinVerMinimumMajorMinor>
+    <MinVerDefaultPreReleaseIdentifiers>preview</MinVerDefaultPreReleaseIdentifiers>
+    <MinVerVerbosity>minimal</MinVerVerbosity>
+
+    <!-- Embed version in assemblies -->
+    <AssemblyVersion>$(MinVerMajor).$(MinVerMinor).$(MinVerPatch)</AssemblyVersion>
+    <FileVersion>$(MinVerMajor).$(MinVerMinor).$(MinVerPatch)</FileVersion>
+    <InformationalVersion>$(MinVerVersion)</InformationalVersion>
+    <Version>$(MinVerVersion)</Version>
+
+    <!-- Container image tags for ACA -->
+    <ContainerImageTag>$(MinVerVersion)</ContainerImageTag>
+    <ContainerImageTags>$(MinVerVersion);latest</ContainerImageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MinVer" Version="6.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,109 @@
+{
+  "name": "aspire1 - .NET Aspire Development",
+  "image": "mcr.microsoft.com/devcontainers/dotnet:1-10.0-noble",
+
+  "features": {
+    "ghcr.io/devcontainers/features/azure-cli:1": {
+      "version": "latest",
+      "extensions": "containerapp,account"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "dockerDashComposeVersion": "v2"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {
+      "version": "latest"
+    },
+    "ghcr.io/azure/azure-dev/azd:latest": {}
+  },
+
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "16gb",
+    "storage": "50gb"
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "github.copilot",
+        "github.copilot-chat",
+        "ms-dotnettools.csdevkit",
+        "ms-dotnettools.csharp",
+        "ms-dotnettools.vscode-dotnet-runtime",
+        "microsoft-aspire.aspire-vscode",
+        "ms-azuretools.vscode-azure-github-copilot",
+        "ms-azuretools.vscode-azure-mcp-server",
+        "ms-azuretools.vscode-azureresourcegroups",
+        "ms-azuretools.vscode-containers",
+        "ms-vscode.powershell",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "github.vscode-github-actions",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "mechatroner.rainbow-csv",
+        "ms-vscode-remote.remote-containers"
+      ],
+      "settings": {
+        "dotnet.defaultSolution": "aspire1.sln",
+        "aspire.autostartDashboard": true,
+        "files.exclude": {
+          "**/bin": true,
+          "**/obj": true
+        },
+        "files.watcherExclude": {
+          "**/bin/**": true,
+          "**/obj/**": true,
+          "**/.git/objects/**": true,
+          "**/.git/subtree-cache/**": true,
+          "**/node_modules/**": true
+        }
+      }
+    }
+  },
+
+  "forwardPorts": [15888, 18848, 7002, 5188],
+
+  "portsAttributes": {
+    "15888": {
+      "label": "Aspire Dashboard (HTTP)",
+      "onAutoForward": "notify"
+    },
+    "18848": {
+      "label": "Aspire Dashboard (HTTPS)",
+      "onAutoForward": "notify"
+    },
+    "7002": {
+      "label": "ApiService",
+      "onAutoForward": "silent"
+    },
+    "5188": {
+      "label": "Web (Blazor)",
+      "onAutoForward": "silent"
+    }
+  },
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "remoteEnv": {
+    "ASPNETCORE_ENVIRONMENT": "Development",
+    "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+    "DOTNET_NOLOGO": "1"
+  },
+
+  "mounts": [
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.azure,target=/home/vscode/.azure,type=bind,consistency=cached",
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.aspire,target=/home/vscode/.aspire,type=bind,consistency=cached"
+  ],
+
+  "runArgs": ["--name=aspire1-devcontainer"],
+
+  "containerEnv": {
+    "TZ": "UTC"
+  }
+}
+
