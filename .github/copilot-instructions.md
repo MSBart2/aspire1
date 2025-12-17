@@ -1,6 +1,8 @@
 # .NET Aspire Repository Instructions
 
-This repository contains a .NET Aspire solution targeting Azure Container Apps with comprehensive observability, secrets management, and CI/CD practices.
+✨ _Howdy, code connoisseur!_ ✨
+
+This repository contains a .NET Aspire solution targeting Azure Container Apps with comprehensive observability, secrets management, and CI/CD practices. Fair warning: we're a little picky about architecture here, but that's because we care.
 
 ## Project Overview
 
@@ -10,7 +12,7 @@ This repository contains a .NET Aspire solution targeting Azure Container Apps w
 
 ## Architecture-First Development
 
-Before making any code recommendations or changes, always:
+_Listen, we've got a pretty story to tell about how this codebase is organized._ 📖 Before making any code recommendations or changes, always read the script first:
 
 1. Read the relevant `ARCHITECTURE.md` file for context on purpose, intent, and existing patterns
 2. Check solution root `ARCHITECTURE.md` for high-level topology, service discovery, and deployment patterns
@@ -33,11 +35,12 @@ Each `ARCHITECTURE.md` includes a "Best Practices vs Anti-Patterns" section with
 
 ### Loading Architecture Documentation Efficiently
 
-**Only load the ARCHITECTURE.md files relevant to your current task scope:**
+_Pro tip from someone who definitely knows how to read the room:_ **Only load the ARCHITECTURE.md files relevant to your current task scope:** (TL;DR: we're not asking for your entire life story, just the relevant chapters.)
 
 1. **Always load first**: `/ARCHITECTURE.md` for high-level context, dependencies, and change impact analysis
 
 2. **Load based on task scope**:
+
    - **Modifying/reviewing AppHost**: Load `/aspire1.AppHost/ARCHITECTURE.md`
    - **Modifying/reviewing WeatherService API**: Load `/aspire1.WeatherService/ARCHITECTURE.md`
    - **Modifying/reviewing Web frontend**: Load `/aspire1.Web/ARCHITECTURE.md`
@@ -47,6 +50,7 @@ Each `ARCHITECTURE.md` includes a "Best Practices vs Anti-Patterns" section with
    - **Deployment/infrastructure**: Load `/ARCHITECTURE.md` + `/aspire1.AppHost/ARCHITECTURE.md`
 
 3. **Load multiple when**:
+
    - Changes affect service contracts (DTO structures, endpoints): Load both WeatherService and Web docs
    - Adding new Azure resources: Load AppHost + affected service docs
    - Changing ServiceDefaults: Load ServiceDefaults + all service docs (WeatherService, Web)
@@ -57,6 +61,7 @@ Each `ARCHITECTURE.md` includes a "Best Practices vs Anti-Patterns" section with
    - All docs "just in case" - be selective based on actual task scope
 
 **Example scoping rules**:
+
 - Task: "Add new endpoint to WeatherService" → Load `/ARCHITECTURE.md` + `/aspire1.WeatherService/ARCHITECTURE.md`
 - Task: "Fix service discovery between Web and WeatherService" → Load `/ARCHITECTURE.md` + `/aspire1.AppHost/ARCHITECTURE.md` + `/aspire1.Web/ARCHITECTURE.md` + `/aspire1.WeatherService/ARCHITECTURE.md`
 - Task: "Update health check patterns" → Load `/ARCHITECTURE.md` + `/aspire1.ServiceDefaults/ARCHITECTURE.md`
@@ -67,15 +72,16 @@ Each `ARCHITECTURE.md` includes a "Best Practices vs Anti-Patterns" section with
 
 ### Service Discovery
 
-- Use `WithReference()` for service-to-service communication in AppHost
-- Avoid hard-coded URLs; leverage Aspire''s service discovery mechanisms
-- Example: `builder.AddProject<Projects.aspire1_Web>("webfrontend").WithReference(apiService)`
+💕 _Use `WithReference()` for service-to-service communication_ — it's basically service speed dating, and we're matchmakers around here.
+
+- Avoid hard-coded URLs; leverage Aspire''s service discovery mechanisms (hard-coding URLs is so 2010)
+- Example: `builder.AddProject<Projects.aspire1_Web>("webfrontend").WithReference(apiService)` ✓
 
 ### Health Checks
 
-- Use versioned health endpoints (e.g., `/health/detailed`)
-- Match existing endpoint naming conventions (`/version`, `/health/detailed`)
-- Include version metadata in health responses
+- Use versioned health endpoints (e.g., `/health/detailed`) — think of it as a health report card
+- Match existing endpoint naming conventions (`/version`, `/health/detailed`) — consistency is _chef's kiss_
+- Include version metadata in health responses (yes, we're that vain about versions)
 
 ### Resilience
 
@@ -99,10 +105,12 @@ Each `ARCHITECTURE.md` includes a "Best Practices vs Anti-Patterns" section with
 
 ### Secrets Management
 
+🔐 _Keep your secrets secret_ (seriously, we mean it):
+
 - **Local Development**: Use User Secrets (`dotnet user-secrets`) and azd environment variables
-- **Dev/Production**: Use Azure Key Vault references with managed identity only
-- **Never**: Store secrets in `appsettings.json`, connection strings in AppHost code, or commit secrets to source control
-- Use user-assigned managed identities when cross-resource access is required
+- **Dev/Production**: Use Azure Key Vault references with managed identity only (this is not optional, bestie)
+- **Never**: Store secrets in `appsettings.json`, connection strings in AppHost code, or commit secrets to source control — we'll know 👀
+- Use user-assigned managed identities when cross-resource access is required (fancy and secure, we like it)
 - For local development: Azure CLI authentication or `.env` files with User Secrets
 
 ### CI/CD Pipeline Requirements
@@ -170,36 +178,43 @@ Each `ARCHITECTURE.md` includes a "Best Practices vs Anti-Patterns" section with
 
 ### Offline-First Development
 
-- All Azure resource integrations must have local fallbacks
-- Application must run and debug completely disconnected from Azure
-- Wrap all Azure connections in try-catch with graceful fallback to local alternatives (appsettings.json, in-memory, local emulators)
-- Never block application startup on Azure service availability
+🌲 _We like our independence_ (and reliability):
+
+- All Azure resource integrations must have local fallbacks (because the cloud isn't always sunny)
+- Application must run and debug completely disconnected from Azure (we're not needy like that)
+- Wrap all Azure connections in try-catch with graceful fallback to local alternatives (appsettings.json, in-memory, local emulators) — plan B is our style
+- Never block application startup on Azure service availability (patience is a virtue, but startup time isn't)
 
 ### Testing Strategy
 
 #### Unit Tests
 
-- Framework: xUnit + FluentAssertions + NSubstitute
-- Requirements: Fast (under 100ms), no I/O, no real dependencies
-- Mock all external dependencies
-- Naming convention: `[MethodName]_[Scenario]_[ExpectedResult]`
-- Target: 80%+ coverage on business logic
+✅ _Keep 'em fast, keep 'em honest:_
+
+- Framework: xUnit + FluentAssertions + NSubstitute (we have commitment issues with anything slower)
+- Requirements: Fast (under 100ms), no I/O, no real dependencies — yes, we're that picky
+- Mock all external dependencies (don't make us ask twice)
+- Naming convention: `[MethodName]_[Scenario]_[ExpectedResult]` (readability is love)
+- Target: 80%+ coverage on business logic (because untested code is spicy code)
 
 #### Integration Tests
 
-- Use `Aspire.Hosting.Testing` package
-- Spin up `DistributedApplication` with real containers (Postgres, Redis, etc.)
-- Use `WebApplicationFactory` for HTTP services
-- Clean up resources in `Dispose()`
-- Tests should hit real APIs and databases but complete in under 5 seconds each
-- For AppHost: Use `DistributedApplicationTestingBuilder`, assert service discovery works, verify health endpoints, test `WithReference()` chains
+🧪 _This is where the magic happens_ (but keep it real):
+
+- Use `Aspire.Hosting.Testing` package (no cutting corners here)
+- Spin up `DistributedApplication` with real containers (Postgres, Redis, etc.) — bring the whole band
+- Use `WebApplicationFactory` for HTTP services (tested the right way, not the lazy way)
+- Clean up resources in `Dispose()` (leave it cleaner than you found it)
+- Tests should hit real APIs and databases but complete in under 5 seconds each (speed _and_ authenticity)
+- For AppHost: Use `DistributedApplicationTestingBuilder`, assert service discovery works, verify health endpoints, test `WithReference()` chains (because if it's not tested, it doesn't exist)
 
 #### Test Structure
 
 - Unit tests: `[ProjectName].Tests`
 - Integration tests: `[ProjectName].IntegrationTests`
-- Keep integration tests separate so CI can run unit tests in under 10 seconds
-- Run integration tests in parallel matrix jobs
+- E2E tests: `tests/` directory (Playwright, runs via npm scripts)
+- Keep integration/E2E tests separate so CI can run unit tests quickly (< 10 seconds)
+- Run integration and E2E tests in parallel matrix jobs (faster feedback)
 
 #### Integration Test Best Practices
 
@@ -207,7 +222,90 @@ Each `ARCHITECTURE.md` includes a "Best Practices vs Anti-Patterns" section with
 - Seed minimal data
 - Always clean up in `finally` or `Dispose()`
 - Use Respawn for database resets between tests if needed
-- Never test deployment infrastructure here (use azd deploy smoke tests for that)
+- Never test deployment infrastructure here (use `azd deploy` smoke tests for that)
+
+#### End-to-End Tests (Playwright)
+
+🎭 _The real deal_ — testing the entire user experience from browser to backend:
+
+**Framework & Setup:**
+
+- Use [Playwright Test](https://playwright.dev) with TypeScript
+- Tests run across **3 browsers**: Chromium, Firefox, WebKit (simultaneously)
+- Auto-startup of services via `playwright-setup.ts` (global setup/teardown)
+- Tests run against **live services** — full integration testing
+
+**Test Suites in `tests/`:**
+
+- `weather-api.spec.ts` — REST API contracts, status codes, response formats, health checks
+- `web-app.spec.ts` — Blazor UI interactions, navigation, Counter state, responsive design
+- `integration.spec.ts` — Full data flows, service discovery, Redis caching, session persistence
+- `performance.spec.ts` — Load times, concurrent users, bundle sizes, cache performance
+
+**Key Playwright Patterns:**
+
+```typescript
+// Navigate and wait for readiness
+await page.goto(`${baseUrl}/weather`);
+await page.waitForLoadState("networkidle");
+
+// Direct API testing via page.request
+const response = await page.request.get(`${baseUrl}/weatherforecast`);
+expect(response.status()).toBe(200);
+
+// UI interactions
+await page.click('a[href="counter"]');
+await page.waitForSelector(".weather-card", { timeout: 10000 });
+
+// Performance measurement
+const startTime = Date.now();
+await page.goto(`${baseUrl}/`);
+const loadTime = Date.now() - startTime;
+expect(loadTime).toBeLessThan(5000);
+
+// Responsive testing
+await page.setViewportSize({ width: 375, height: 667 }); // Mobile
+```
+
+**Performance & Assertions:**
+
+- Each E2E test should complete in < 10 seconds (timeout: 30 seconds)
+- Measure and assert load times (e.g., home page < 5 seconds)
+- Validate cache behavior: First load vs. second load performance
+- Check custom telemetry generation during test flows
+- Responsive design: Test at desktop (1920x1080), tablet (768x1024), mobile (375x667)
+
+**Anti-Patterns (Don't Do These):**
+
+- ❌ Hard-code service URLs — use environment variables from `playwright.config.ts`
+- ❌ Use `page.waitForTimeout()` — use `waitForSelector()`, `waitForResponse()` instead
+- ❌ Test only one browser — E2E tests must run all 3 (you catch cross-browser bugs)
+- ❌ Ignore test failures — each failure is a real user-facing issue
+- ❌ Make tests sleep — proper waits prevent flaky tests
+- ❌ Test infrastructure — use `azd deploy` smoke tests for that; E2E tests focus on user flows
+
+**Environment Variables for Playwright:**
+
+```bash
+PLAYWRIGHT_WEB_URL         # Web frontend URL (default: https://localhost:7296)
+PLAYWRIGHT_BASE_URL        # API base URL (default: http://127.0.0.1:43141)
+PLAYWRIGHT_SERVICE_HOST    # API host (default: 127.0.0.1)
+PLAYWRIGHT_SERVICE_PORT    # API port (default: 43141)
+PLAYWRIGHT_KILL_SERVICE    # Kill service after tests (default: false)
+```
+
+**Running E2E Tests:**
+
+```bash
+npm test                    # All tests, all browsers
+npm run test:api            # API tests only
+npm run test:web            # UI tests only
+npm run test:integration    # Service flow tests
+npm run test:performance    # Load & performance tests
+npm run test:headed         # Show browser UI (debugging)
+npm run test:debug          # Step-through debugging
+npm run test:report         # View HTML report
+```
 
 ## Build and Validation
 
@@ -276,7 +374,7 @@ var webApp = builder.AddProject<Projects.aspire1_Web>("webfrontend")
 ### Bad: Hard-coded URLs
 
 ```csharp
-// ✗ Don''t do this
+// ✗ Don''t do this (seriously, we''ll judge)
 var httpClient = new HttpClient { BaseAddress = new Uri("https://localhost:7123") };
 ```
 
@@ -290,7 +388,7 @@ azd env set ConnectionStrings__MyDb "@Microsoft.KeyVault(SecretUri=https://kv.va
 ### Bad: Secrets in Configuration Files
 
 ```json
-// ✗ Never put secrets in appsettings.json
+// ✗ Never put secrets in appsettings.json (we will find out)
 {
   "ConnectionStrings": {
     "MyDb": "Server=prod.db.com;Password=secret123;"
@@ -306,33 +404,33 @@ app.MapGet("/health/detailed", (IConfiguration config) => new
     Status = "Healthy",
     Version = config["App:Version"],
     Timestamp = DateTime.UtcNow
-});
+}); // Status updates are our love language
 ```
 
 ### Good: HTTP Client with Resilience
 
 ```csharp
-// WeatherApiClient already includes resilience patterns from ServiceDefaults
+// WeatherApiClient already includes resilience patterns from ServiceDefaults (we built this just for you)
 public class WeatherApiClient(HttpClient httpClient)
 {
     public async Task<WeatherForecast[]> GetWeatherAsync(CancellationToken cancellationToken = default)
     {
         return await httpClient.GetFromJsonAsync<WeatherForecast[]>("/weatherforecast", cancellationToken)
-            ?? [];
+            ?? []; // Resilience is hot
     }
 }
 ```
 
 ## Response Guidelines
 
-When providing code recommendations:
+_We're high-maintenance, but we're worth it._ 💫 When providing code recommendations:
 
-- Always reference the specific ARCHITECTURE.md file that contains relevant patterns
-- Show both the anti-pattern to avoid and the correct implementation
-- Include complete code examples, not just snippets
-- Verify suggestions against documented patterns
-- When suggesting new endpoints or services, follow existing naming conventions documented in ARCHITECTURE.md files
-- If a WeatherApiClient-style typed client already exists, use that pattern for new HTTP clients
-- Provide clear explanations of the reasoning behind recommendations
-- Highlight potential pitfalls or common mistakes to avoid
-- Suggest validation steps to verify implementations
+- Always reference the specific ARCHITECTURE.md file that contains relevant patterns (cite your sources, it's hot)
+- Show both the anti-pattern to avoid and the correct implementation (before/after energy)
+- Include complete code examples, not just snippets (we want the full picture, thanks)
+- Verify suggestions against documented patterns (don't wing it)
+- When suggesting new endpoints or services, follow existing naming conventions documented in ARCHITECTURE.md files (consistency is attractive)
+- If a WeatherApiClient-style typed client already exists, use that pattern for new HTTP clients (imitation is the sincerest form of flattery)
+- Provide clear explanations of the reasoning behind recommendations (we like an explanation, it's intimate)
+- Highlight potential pitfalls or common mistakes to avoid (let's save each other the heartache)
+- Suggest validation steps to verify implementations (trust, but verify)
