@@ -27,10 +27,7 @@ export default defineConfig({
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
-    screenshot: 'always', // Takes screenshots for all tests
-
-    /* Increase timeout for potentially slow GitHub Codespaces environment */
-    timeout: 30 * 1000, // 30 seconds
+    screenshot: 'on', // Takes screenshots for all tests
 
     /* Ignore HTTPS certificate errors for self-signed development certificates */
     ignoreHTTPSErrors: true,
@@ -43,6 +40,11 @@ export default defineConfig({
 
   /* Global timeout for each test */
   timeout: 60 * 1000, // 60 seconds
+
+  /* Action timeout for individual actions (navigation, clicks, etc.) */
+  expect: {
+    timeout: 30 * 1000, // 30 seconds for expect assertions
+  },
 
   /* Configure projects for major browsers */
   projects: [
