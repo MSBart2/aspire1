@@ -379,7 +379,13 @@ npm run test:web          # Blazor UI only
 npm run test:integration  # Full service communication
 npm run test:performance  # Load & cache performance
 
-# View detailed HTML report
+# Run tests in TRACE MODE to capture screenshots and videos
+npx playwright test --trace=on
+
+# View the trace report with screenshots/videos
+npx playwright show-trace trace/trace.zip
+
+# View detailed HTML report (includes test results summary)
 npm run test:report
 
 # Debug mode (show browser UI)
@@ -388,6 +394,27 @@ npm run test:headed
 # Step-through debugging
 npm run test:debug
 ```
+
+**Trace Mode Deep Dive** 🎬
+
+Playwright's trace mode captures **everything**—screenshots, videos, network logs, DOM snapshots. Perfect for debugging failed tests or analyzing test behavior:
+
+```bash
+# Run tests with trace recording (creates trace/trace.zip)
+npx playwright test --trace=on
+
+# Open the trace viewer (interactive UI with playback)
+npx playwright show-trace trace/trace.zip
+
+# Inside the viewer:
+# - Step through each action frame-by-frame
+# - Click on any action to see the screenshot
+# - Inspect network requests and responses
+# - View console logs and errors
+# - Compare expected vs actual DOM state
+```
+
+**Pro tip:** Traces are saved to `trace/trace.zip`. Use `show-trace` command immediately after test run for fastest debugging. Screenshots appear for every action (click, hover, navigate, etc.), making it easy to spot exactly where tests fail. 📸
 
 **What Gets Tested:**
 
