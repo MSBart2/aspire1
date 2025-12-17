@@ -87,6 +87,7 @@ That's it. Seriously. `azd` will:
 ### Production Pipeline (3 Environments: Dev → Stage → Prod)
 
 The repository includes a **multistage CI/CD pipeline** with:
+
 - ✅ **Parallel testing** (Web + API tests run simultaneously)
 - ✅ **3 environments** with separate subscriptions/approvals
 - ✅ **Automatic dev deployments** on push to main
@@ -95,17 +96,20 @@ The repository includes a **multistage CI/CD pipeline** with:
 - ✅ **Health checks** and deployment verification
 
 **Deployment Flow:**
+
 ```
 main branch → Auto-deploy to Dev (~6-10 min)
 Tag v* → Dev → Stage (approval) → Prod (approval) (~15-20 min)
 ```
 
 **Setup:** See [`.github/workflows/PIPELINE_SETUP.md`](.github/workflows/PIPELINE_SETUP.md) for complete setup instructions including:
+
 - Azure service principal configuration with OIDC
 - GitHub environment and secrets setup
 - Usage examples and troubleshooting
 
 **Quick Start Pipeline:**
+
 ```bash
 # For dev deployment (automatic on main)
 git add .
@@ -273,6 +277,7 @@ az appconfig kv set --name <your-appconfig> \
 ```
 
 **Available Feature Flags:**
+
 - `WeatherForecast` - Controls entire weather API availability
 - `DetailedHealth` - Controls health endpoint detail level
 - `WeatherHumidity` - Controls humidity data display in the UI
@@ -343,7 +348,9 @@ dotnet run --project aspire1.AppHost
 # Feel like a 10x developer 😎
 ```
 
-### Testing
+### Testing (Unit + Integration + E2E)
+
+**Unit & Integration Tests** (.NET):
 
 ```bash
 # Run all tests
@@ -352,7 +359,44 @@ dotnet test
 # Run specific project tests
 dotnet test aspire1.WeatherService.Tests
 dotnet test aspire1.Web.Tests
+
+# With coverage metrics
+dotnet test /p:CollectCoverage=true
 ```
+
+**End-to-End Tests** (Playwright):
+
+```bash
+# Start the app first (or let Playwright auto-start)
+dotnet run --project aspire1.AppHost
+
+# Run all E2E tests
+npm test
+
+# Run specific test suites
+npm run test:api          # Weather API endpoints only
+npm run test:web          # Blazor UI only
+npm run test:integration  # Full service communication
+npm run test:performance  # Load & cache performance
+
+# View detailed HTML report
+npm run test:report
+
+# Debug mode (show browser UI)
+npm run test:headed
+
+# Step-through debugging
+npm run test:debug
+```
+
+**What Gets Tested:**
+
+- 🌐 **API Contracts** - REST endpoints, response formats, status codes
+- 🎨 **UI Interactions** - Navigation, forms, Counter page, Weather cards
+- 🔗 **Service Communication** - Web ↔ API, service discovery validation
+- 💾 **Caching** - Redis hit/miss scenarios, performance improvement
+- 📊 **Performance** - Load times, concurrent user simulation, bundle sizes
+- 📈 **Metrics** - Custom telemetry generation and validation
 
 ### Versioning (Automatic SemVer)
 

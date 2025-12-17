@@ -1,0 +1,23 @@
+{
+  "name": "aspire1-tests",
+  "version": "1.0.0",
+  "description": "End-to-end tests for aspire1 .NET Aspire application",
+  "scripts": {
+    "test": "PLAYWRIGHT_BASE_URL=http://127.0.0.1:43141 playwright test",
+    "test:headed": "PLAYWRIGHT_BASE_URL=http://127.0.0.1:43141 playwright test --headed",
+    "test:debug": "PLAYWRIGHT_BASE_URL=http://127.0.0.1:43141 playwright test --debug",
+    "test:report": "playwright show-report",
+    "test:setup": "PLAYWRIGHT_BASE_URL=http://127.0.0.1:43141 playwright test setup-validation.spec.ts",
+    "test:api": "PLAYWRIGHT_BASE_URL=http://127.0.0.1:43141 playwright test weather-api.spec.ts",
+    "test:web": "PLAYWRIGHT_WEB_URL=http://localhost:5142 playwright test web-app.spec.ts",
+    "test:integration": "PLAYWRIGHT_BASE_URL=http://127.0.0.1:43141 PLAYWRIGHT_WEB_URL=http://localhost:5142 playwright test integration.spec.ts",
+    "test:performance": "PLAYWRIGHT_BASE_URL=http://127.0.0.1:43141 PLAYWRIGHT_WEB_URL=http://localhost:5142 playwright test performance.spec.ts"
+  },
+  "dependencies": {
+    "npx": "^10.2.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/node": "^25.0.3"
+  }
+}
