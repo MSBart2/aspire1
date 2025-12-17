@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "/usr/local/share/nvm/versions/node/v24.12.0/bin/npx",
+      "args": ["-y", "@executeautomation/playwright-mcp-server"]
+    }
+  }
+}

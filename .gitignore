@@ -35,6 +35,16 @@ bld/
 TestResult.xml
 nunit-*.xml
 
+# Playwright test results
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Test output files
+test-output*.txt
+TEST_SUMMARY.md
+PLAYWRIGHT_*.md
+
 # Build Results of an ATL Project
 [Dd]ebugPS/
 [Rr]eleasePS/
