@@ -3,6 +3,21 @@ set -e
 
 echo "🚀 Setting up .NET Aspire development environment..."
 
+# Pre-install .NET runtimes needed by VS Code extensions
+# This prevents downloads on every container start
+echo "📦 Pre-installing .NET runtimes for VS Code extensions..."
+export DOTNET_ROOT=/usr/share/dotnet
+export PATH="$DOTNET_ROOT:$PATH"
+
+# Install .NET 9 ASP.NET Core runtime (needed by C# DevKit)
+if ! dotnet --list-runtimes | grep -q "Microsoft.AspNetCore.App 9.0"; then
+    echo "  Installing .NET 9 ASP.NET Core runtime..."
+    wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
+    chmod +x dotnet-install.sh
+    ./dotnet-install.sh --runtime aspnetcore --version 9.0 --install-dir $DOTNET_ROOT
+    rm dotnet-install.sh
+fi
+
 # Install MinVer CLI for versioning
 echo "📦 Installing MinVer CLI..."
 dotnet tool install --global minver-cli || dotnet tool update --global minver-cli
