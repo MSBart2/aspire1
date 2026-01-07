@@ -186,7 +186,18 @@ test('Counter increments on click', async ({ page }) => {
   const initialCount = parseInt(counterText?.match(/\d+/)?.[0] || '0');
   
   await page.getByRole('button', { name: 'Click me' }).click();
-  await page.waitForTimeout(500); // SignalR propagation
+  await page.waitForFunction(
+    (selector, expected) => {
+      const el = document.querySelector(selector);
+      if (!el) return false;
+      const match = el.textContent?.match(/\d+/);
+      if (!match) return false;
+      const current = parseInt(match[0], 10);
+      return current === expected;
+    },
+    'p[role="status"]',
+    initialCount + 1
+  );
   
   const newCounterText = await page.locator('p[role="status"]').textContent();
   const newCount = parseInt(newCounterText?.match(/\d+/)?.[0] || '0');
