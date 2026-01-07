@@ -9,8 +9,8 @@ import { test, expect } from '@playwright/test';
  * Set PLAYWRIGHT_WEB_URL to override the default port.
  */
 test.describe('Blazor Web Application', () => {
-  // Use environment variable for web URL or fallback to HTTPS port
-  const webUrl = process.env.PLAYWRIGHT_WEB_URL || 'https://localhost:7296';
+  // Use environment variable for web URL
+  const webUrl = process.env.PLAYWRIGHT_WEB_URL!;
 
   test.beforeEach(async ({ page }) => {
     // Navigate to the web application
@@ -40,7 +40,7 @@ test.describe('Blazor Web Application', () => {
     await expect(counterDisplay).toContainText('Current count: 0');
 
     // Click the increment button
-    const incrementButton = page.locator('button:has-text("Click me")');
+    const incrementButton = page.getByTestId('increment-button');
     await incrementButton.click();
 
     // Verify counter incremented
@@ -58,10 +58,10 @@ test.describe('Blazor Web Application', () => {
     await expect(page.locator('h1')).toContainText('Weather');
 
     // Wait for weather data to load
-    await page.waitForSelector('.weather-card', { timeout: 10000 });
+    await page.getByTestId('weather-card').first().waitFor({ timeout: 10000 });
 
     // Verify weather cards are visible
-    const cards = page.locator('.weather-card');
+    const cards = page.getByTestId('weather-card');
     await expect(cards.first()).toBeVisible();
 
     // Verify card count (should have multiple weather forecasts)
@@ -70,9 +70,9 @@ test.describe('Blazor Web Application', () => {
 
     // Check first card structure
     const firstCard = cards.first();
-    await expect(firstCard.locator('.card-header')).toBeVisible(); // Date header
-    await expect(firstCard.locator('.weather-temp')).toBeVisible(); // Temperature
-    await expect(firstCard.locator('.weather-summary')).toBeVisible(); // Summary
+    await expect(firstCard.getByTestId('weather-date')).toBeVisible(); // Date header
+    await expect(firstCard.getByTestId('weather-temp-c')).toBeVisible(); // Temperature
+    await expect(firstCard.getByTestId('weather-summary')).toBeVisible(); // Summary
   });
 
   test('should handle loading states gracefully', async ({ page }) => {
@@ -80,14 +80,14 @@ test.describe('Blazor Web Application', () => {
     await page.click('a[href="weather"]');
 
     // Look for loading indicator (if present)
-    const loadingIndicator = page.locator('text="Loading..."');
+    const loadingIndicator = page.getByTestId('weather-loading');
     if (await loadingIndicator.isVisible()) {
       // Wait for loading to complete
       await loadingIndicator.waitFor({ state: 'hidden', timeout: 10000 });
     }
 
     // Ensure content is loaded
-    await expect(page.locator('.weather-card').first()).toBeVisible();
+    await expect(page.getByTestId('weather-card').first()).toBeVisible();
   });
 
   test('should maintain responsive design on mobile viewport', async ({ page }) => {
@@ -95,7 +95,7 @@ test.describe('Blazor Web Application', () => {
     await page.setViewportSize({ width: 375, height: 667 });
 
     // On mobile, nav might be collapsed, so check for navbar toggle
-    const navToggle = page.locator('.navbar-toggler');
+    const navToggle = page.getByTestId('nav-toggle');
     if (await navToggle.isVisible()) {
       // Mobile menu is collapsed, this is expected
       await expect(navToggle).toBeVisible();
@@ -103,12 +103,12 @@ test.describe('Blazor Web Application', () => {
 
     // Test counter page on mobile - use direct navigation
     await page.goto(`${webUrl}/counter`);
-    await expect(page.locator('button:has-text("Click me")')).toBeVisible();
+    await expect(page.getByTestId('increment-button')).toBeVisible();
 
     // Test weather page on mobile
     await page.goto(`${webUrl}/weather`);
-    await page.waitForSelector('.weather-card', { timeout: 10000 });
-    await expect(page.locator('.weather-card').first()).toBeVisible();
+    await page.getByTestId('weather-card').first().waitFor({ timeout: 10000 });
+    await expect(page.getByTestId('weather-card').first()).toBeVisible();
   });
 
   test('should validate page health checks', async ({ request }) => {
