@@ -149,7 +149,7 @@ test.describe('Service Integration', () => {
 
     // Navigate away and back
     await page.click('a[href="weather"]');
-    await page.getByTestId('weather-card').first().or(page.getByTestId('weather-loading')).waitFor({ timeout: 5000 }).catch(() => {});
+    await page.getByTestId('weather-card').first().or(page.getByTestId('weather-loading')).waitFor({ timeout: 5000 });
     await page.click('a[href="counter"]');
 
     // In Blazor Server, component state is reset on navigation by default
