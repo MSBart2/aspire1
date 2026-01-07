@@ -696,6 +696,41 @@ Future integration tests will use `Aspire.Hosting.Testing` to:
 - Verify health endpoints and OpenTelemetry traces
 - Validate Redis caching end-to-end
 
+### End-to-End Tests (Playwright)
+
+**Current Implementation:**
+
+The `tests/` directory contains comprehensive Playwright E2E tests with **automated service lifecycle management**:
+
+```bash
+npm test  # Auto-starts services, runs 31 tests, cleans up
+```
+
+**Infrastructure Features:**
+
+- 🚀 **Auto-startup**: `playwright-setup.ts` detects and starts both WeatherService and Web Frontend if not running
+- 🧹 **Auto-teardown**: `playwright-teardown.ts` gracefully terminates spawned processes using PID file tracking
+- 💾 **PID persistence**: `/tmp/playwright-aspire-pids.json` tracks process IDs across setup/teardown
+- 🎯 **Smart cleanup**: Only kills processes started by the test suite (leaves pre-existing services alone)
+- ⏱️ **Health checks**: 30-second timeout with 500ms polling intervals
+
+**Test Coverage:**
+
+| Test Suite | File | Coverage |
+| --- | --- | --- |
+| Weather API | `weather-api.spec.ts` | REST endpoints, caching, health, version |
+| Web Application | `web-app.spec.ts` | Blazor UI, navigation, counter, responsive design |
+| Integration | `integration.spec.ts` | Service discovery, Redis, SignalR, telemetry |
+| Performance | `performance.spec.ts` | Load times, cache efficiency, concurrent users |
+
+**Recent Improvements (Jan 2026):**
+
+- ✅ Fixed Blazor SignalR timing (500ms wait before interactive component clicks)
+- ✅ Adjusted cache performance threshold (0.5x → 3x for CI environment variance)
+- ✅ Implemented proper process tree cleanup (`pkill -P` + `SIGTERM`/`SIGKILL`)
+
+**Documentation:** See [tests/README.md](tests/README.md) for detailed usage and configuration.
+
 ## 🔗 Dependencies & Change Impact Analysis
 
 ### Component Dependency Graph
@@ -733,6 +768,13 @@ These files/paths can be modified without breaking other parts of the applicatio
 | `aspire1.Web/wwwroot/*` | Static assets (CSS, JS, images) | Web assets don't impact API or service logic |
 | `aspire1.WeatherService/Services/CachedWeatherService.cs` | Internal caching logic | Implementation detail; API contract unchanged |
 | `*.Tests/**` | Test code | Tests don't affect production code |
+| `tests/**/*.spec.ts` | Playwright E2E test files | Test scenarios; doesn't affect production code |
+| `playwright-setup.ts` | Test infrastructure setup | Test lifecycle; no production impact |
+| `playwright-teardown.ts` | Test infrastructure cleanup | Test lifecycle; no production impact |
+| `playwright.config.ts` | Playwright test configuration | Test runner settings; no production impact |
+| `.github/copilot-instructions.md` | GitHub Copilot guidance | Developer assistance; no runtime impact |
+| `.github/instructions/*.md` | Custom Copilot instructions | Developer assistance; no runtime impact |
+| `.github/agents/*.agent.md` | Custom Copilot agents | Developer assistance; no runtime impact |
 | `ARCHITECTURE.md` files | Documentation only | No code impact |
 | `README.md`, `TELEMETRY.md` | Documentation | No code impact |
 | `infra/dashboard.bicep` | Azure Dashboard definition | UI-only; doesn't affect app logic |
@@ -873,6 +915,72 @@ cat aspire1.AppHost/AppHost.cs | grep -E "AddProject|WithReference"
 | ServiceDefaults changes | Yes | All services smoke test |
 | AppHost service names | Yes | Service discovery tests |
 | Infrastructure (Bicep) | Yes | Deploy to dev first |
+
+## 🤖 GitHub Copilot Integration
+
+This repository includes **specialized GitHub Copilot configuration** to enforce architectural patterns and accelerate development.
+
+### Repository Instructions
+
+**Primary Configuration:** [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
+
+Ensures GitHub Copilot always:
+- 📖 **Loads relevant ARCHITECTURE.md files** before suggesting code changes
+- ✅ **Enforces documented patterns** (service discovery, secrets, resilience, observability)
+- 🚫 **Prevents anti-patterns** (hard-coded URLs, secrets in code, missing health checks)
+- 🎯 **References real examples** from "Good vs Bad Implementations" sections
+
+**Azure-Specific Guidance:** [`.github/instructions/azure.instructions.md`](.github/instructions/azure.instructions.md)
+
+Ensures Azure recommendations:
+- ☁️ Target Azure Container Apps (not App Service or AKS)
+- 🛠️ Use Azure Developer CLI (azd) patterns exclusively
+- 🔑 Use Key Vault with managed identity for secrets
+- 📊 Follow Application Insights and custom metrics patterns
+
+### Custom Copilot Agents
+
+**Location:** `.github/agents/` directory
+
+| Agent | File | Purpose | Invoke With |
+| --- | --- | --- | --- |
+| **@docs** | `docs.agent.md` | Documentation generation with Mermaid diagrams | `@docs document Redis caching` |
+| **@playwright-tester** | `playwright-tester.agent.md` | E2E test generation and debugging | `@playwright-tester write weather API tests` |
+| **@commit** | `commit.agent.md` | Conventional Commits and PR creation | `@commit create PR for this branch` |
+
+**How This Improves Development:**
+
+1. **Architecture Enforcement** - Copilot won't suggest `HttpClient` without resilience or secrets in `appsettings.json`
+2. **Context-Aware Suggestions** - Loading `ARCHITECTURE.md` first means recommendations match your patterns
+3. **Faster Onboarding** - New developers get guided through correct patterns immediately
+4. **Specialized Workflows** - Different agents for different tasks (documentation vs testing vs commits)
+5. **Consistency** - All team members get the same architectural guidance
+
+**Example Usage:**
+
+```bash
+# In Copilot Chat:
+"Add a new health check endpoint to WeatherService"
+# → Copilot loads aspire1.WeatherService/ARCHITECTURE.md
+# → Suggests versioned endpoint matching existing pattern
+# → Includes version metadata in response
+
+"How do I add a secret for database connection?"
+# → Copilot loads copilot-instructions.md
+# → Recommends Key Vault reference with managed identity
+# → Shows example: @Microsoft.KeyVault(SecretUri=...)
+# → Never suggests storing in appsettings.json
+
+"Write tests for the weather API caching"
+# → Use: @playwright-tester write integration tests for Redis caching
+# → Agent explores the API endpoint
+# → Identifies correct response structure
+# → Generates TypeScript test with proper assertions
+```
+
+**See Also:**
+- Main README section: [GitHub Copilot Integration & Custom Agents](README.md#-github-copilot-integration--custom-agents)
+- Individual agent documentation in `.github/agents/` directory
 
 ## 📖 References
 
