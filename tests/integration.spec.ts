@@ -115,8 +115,8 @@ test.describe('Service Integration', () => {
     const incrementButton = page.getByTestId('increment-button');
     for (let i = 0; i < 5; i++) {
       await incrementButton.click();
-      // Wait for counter value to update instead of arbitrary timeout
-      await page.locator('p[role="status"]', { hasText: `Current count: ${i + 1}` }).waitFor();
+      // Wait for counter value to update instead of arbitrary timeout, using semantic locator
+      await expect(page.getByRole('status')).toContainText(`Current count: ${i + 1}`);
     }
 
     // Navigate to weather to generate API metrics
