@@ -7,7 +7,7 @@ import { test, expect } from '@playwright/test';
  * Note: Tests the Web Frontend at http://localhost:5142 (or PLAYWRIGHT_WEB_URL)
  */
 test.describe('Performance Tests', () => {
-  const webUrl = process.env.PLAYWRIGHT_WEB_URL || 'https://localhost:7296';
+  const webUrl = process.env.PLAYWRIGHT_WEB_URL!;
 
   test('should load home page within acceptable time', async ({ page }) => {
     const startTime = Date.now();
@@ -26,7 +26,7 @@ test.describe('Performance Tests', () => {
     await page.click('a[href="weather"]');
 
     const startTime = Date.now();
-    await page.waitForSelector('.weather-card', { timeout: 10000 });
+    await page.getByTestId('weather-card').first().waitFor({ timeout: 10000 });
     const loadTime = Date.now() - startTime;
 
     expect(loadTime).toBeLessThan(3000); // Weather data should load within 3 seconds
@@ -54,7 +54,7 @@ test.describe('Performance Tests', () => {
 
     // First load
     const startTime1 = Date.now();
-    await page.waitForSelector('.weather-card', { timeout: 10000 });
+    await page.getByTestId('weather-card').first().waitFor({ timeout: 10000 });
     const firstLoadTime = Date.now() - startTime1;
 
     // Navigate away and back
@@ -63,13 +63,17 @@ test.describe('Performance Tests', () => {
 
     // Second load (should be faster due to caching)
     const startTime2 = Date.now();
-    await page.waitForSelector('.weather-card', { timeout: 5000 });
+    await page.getByTestId('weather-card').first().waitFor({ timeout: 5000 });
     const secondLoadTime = Date.now() - startTime2;
 
     console.log(`First load: ${firstLoadTime}ms, Second load: ${secondLoadTime}ms`);
 
-    // Second load should be reasonably fast (cache doesn't always make it faster due to rehydration)
-    expect(secondLoadTime).toBeLessThan(5000); // Should still load quickly
+    // Second load should be reasonably fast
+    expect(secondLoadTime).toBeLessThan(5000);
+    // Architecture goal: Cache should provide strong improvement (target >=50%+)
+    const improvementPercent = ((firstLoadTime - secondLoadTime) / firstLoadTime) * 100;
+    console.log(`Cache improvement: ${improvementPercent.toFixed(1)}%`);
+    expect(secondLoadTime).toBeLessThan(firstLoadTime * 0.5); // Should be <50% of first load
   });
 
   test('should maintain performance under simulated load', async ({ browser }) => {
@@ -86,7 +90,7 @@ test.describe('Performance Tests', () => {
     await Promise.all(pages.map(async (page, index) => {
       await page.goto(`${webUrl}/`);
       await page.click('a[href="weather"]');
-      await page.waitForSelector('.weather-card', { timeout: 15000 });
+      await page.getByTestId('weather-card').first().waitFor({ timeout: 15000 });
     }));
 
     const totalTime = Date.now() - startTime;

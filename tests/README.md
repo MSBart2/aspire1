@@ -8,13 +8,23 @@ Think of these as automated QA engineers that never get tired, never forget anyt
 
 ## Quick Start
 
+**Required Environment Variables:**
+
+```bash
+# REQUIRED - These must be set before running tests
+export PLAYWRIGHT_WEB_URL="https://localhost:7296"      # Web frontend URL
+export PLAYWRIGHT_BASE_URL="http://127.0.0.1:43141"    # WeatherService API URL
+```
+
 The fastest way to run E2E tests (auto-starts services):
 
 ```bash
 # 1. Start the Aspire AppHost (orchestrates everything)
 dotnet run --project aspire1.AppHost
 
-# 2. In another terminal, run all tests
+# 2. In another terminal, set environment variables and run tests
+export PLAYWRIGHT_WEB_URL="https://localhost:7296"
+export PLAYWRIGHT_BASE_URL="http://127.0.0.1:43141"
 npm test
 # (or just: npm ci && npm test)
 

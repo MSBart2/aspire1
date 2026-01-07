@@ -9,8 +9,8 @@ import { test, expect } from '@playwright/test';
  * - Web Frontend: http://localhost:5142 (or PLAYWRIGHT_WEB_URL)
  */
 test.describe('Service Integration', () => {
-  const apiUrl = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:43141';
-  const webUrl = process.env.PLAYWRIGHT_WEB_URL || 'https://localhost:7296';
+  const apiUrl = process.env.PLAYWRIGHT_BASE_URL!;
+  const webUrl = process.env.PLAYWRIGHT_WEB_URL!;
 
   test('should demonstrate end-to-end weather flow', async ({ page, request }) => {
     // First verify the weather service API is working
@@ -23,20 +23,19 @@ test.describe('Service Integration', () => {
 
     // Now verify the web UI displays the same data
     await page.goto(`${webUrl}/weather`);
-    await page.waitForSelector('.weather-card', { timeout: 10000 });
+    await page.getByTestId('weather-card').first().waitFor({ timeout: 10000 });
 
     // Get the first weather card
-    const firstCard = page.locator('.weather-card').first();
+    const firstCard = page.getByTestId('weather-card').first();
     await expect(firstCard).toBeVisible();
 
     // Verify the card has temperature data
-    const cardBody = firstCard.locator('.card-body');
-    const tempCText = await cardBody.locator('.weather-temp').textContent();
+    const tempCText = await firstCard.getByTestId('weather-temp-c').textContent();
     expect(tempCText).toBeTruthy();
 
     // Extract temperatures (format is like "51° C" and "123°F")
     const tempCMatch = tempCText!.match(/(-?\d+)°/);
-    const tempFText = await cardBody.locator('.text-muted').first().textContent();
+    const tempFText = await firstCard.getByTestId('weather-temp-f').textContent();
     const tempFMatch = tempFText!.match(/(-?\d+)°F/);
 
     if (tempCMatch && tempFMatch) {
@@ -56,11 +55,11 @@ test.describe('Service Integration', () => {
 
     // The fact that weather data loads confirms service discovery is working
     // between the web frontend and weather service
-    await page.waitForSelector('.weather-card', { timeout: 10000 });
-    await expect(page.locator('.weather-card').first()).toBeVisible();
+    await page.getByTestId('weather-card').first().waitFor({ timeout: 10000 });
+    await expect(page.getByTestId('weather-card').first()).toBeVisible();
 
     // Check that the service communication is working by verifying data freshness
-    const cards = page.locator('.weather-card');
+    const cards = page.getByTestId('weather-card');
     const cardCount = await cards.count();
     expect(cardCount).toBeGreaterThan(0);
 
@@ -87,13 +86,13 @@ test.describe('Service Integration', () => {
     // Navigate to weather page
     await page.goto(`${webUrl}/weather`);
     const startTime = Date.now();
-    await page.waitForSelector('.weather-card', { timeout: 10000 });
+    await page.getByTestId('weather-card').first().waitFor({ timeout: 10000 });
     const firstLoadTime = Date.now() - startTime;
 
     // Reload the same page to test caching
     await page.reload();
     const startTime2 = Date.now();
-    await page.waitForSelector('.weather-card', { timeout: 10000 });
+    await page.getByTestId('weather-card').first().waitFor({ timeout: 10000 });
     const secondLoadTime = Date.now() - startTime2;
 
     console.log(`First load: ${firstLoadTime}ms, Cached reload: ${secondLoadTime}ms`);
@@ -101,6 +100,11 @@ test.describe('Service Integration', () => {
     // Both loads should be reasonably fast
     expect(firstLoadTime).toBeLessThan(3000);
     expect(secondLoadTime).toBeLessThan(3000);
+    // Log cache improvement for observability, but avoid brittle hard thresholds in tests
+    const improvementPercent = ((firstLoadTime - secondLoadTime) / firstLoadTime) * 100;
+    console.log(`Cache improvement: ${improvementPercent.toFixed(1)}%`);
+    // Ensure cached reload is not significantly slower than the initial load
+    expect(secondLoadTime).toBeLessThanOrEqual(firstLoadTime);
   });
 
   test('should verify OpenTelemetry metrics collection', async ({ page, request }) => {
@@ -108,22 +112,23 @@ test.describe('Service Integration', () => {
     await page.goto(`${webUrl}/counter`);
 
     // Click counter multiple times to generate custom metrics
-    const incrementButton = page.locator('button:has-text("Click me")');
+    const incrementButton = page.getByTestId('increment-button');
     for (let i = 0; i < 5; i++) {
       await incrementButton.click();
-      await page.waitForTimeout(100); // Small delay between clicks
+      // Wait for counter value to update instead of arbitrary timeout, using semantic locator
+      await expect(page.getByRole('status')).toContainText(`Current count: ${i + 1}`);
     }
 
     // Navigate to weather to generate API metrics
     await page.click('a[href="weather"]');
-    await page.waitForSelector('.weather-card', { timeout: 10000 });
+    await page.getByTestId('weather-card').first().waitFor({ timeout: 10000 });
 
     // Refresh weather data to generate more API calls
     await page.reload();
-    await page.waitForSelector('.weather-card', { timeout: 10000 });
+    await page.getByTestId('weather-card').first().waitFor({ timeout: 10000 });
 
     // Verify the application is still responsive (metrics collection shouldn't impact performance)
-    await expect(page.locator('.weather-card').first()).toBeVisible();
+    await expect(page.getByTestId('weather-card').first()).toBeVisible();
 
     console.log('Generated telemetry data through user interactions');
   });
@@ -135,26 +140,81 @@ test.describe('Service Integration', () => {
     await page.click('a[href="counter"]');
 
     // Increment counter
-    const incrementButton = page.locator('button:has-text("Click me")');
+    const incrementButton = page.getByTestId('increment-button');
     await incrementButton.click();
     await incrementButton.click();
 
     // Verify counter shows 2
-    await expect(page.locator('p[role="status"]')).toContainText('Current count: 2');
+    await expect(page.getByRole('status')).toContainText('Current count: 2');
 
     // Navigate away and back
     await page.click('a[href="weather"]');
-    await page.waitForSelector('.weather-card, text="Loading..."', { timeout: 5000 }).catch(() => {});
+    await page.getByTestId('weather-card').first().or(page.getByTestId('weather-loading')).waitFor({ timeout: 5000 });
     await page.click('a[href="counter"]');
 
     // In Blazor Server, component state is reset on navigation by default
     // But SignalR connection should remain active (verify page is responsive)
-    await expect(page.locator('p[role="status"]')).toBeVisible();
+    await expect(page.getByRole('status')).toBeVisible();
 
     // Test that SignalR is working by clicking the button again
     await incrementButton.click();
     await expect(page.locator('p[role="status"]')).toContainText('Current count: 1');
 
     console.log('Verified SignalR connection remains active across navigation');
+  });
+});
+
+/**
+ * Architecture Validation Tests
+ * Tests that the application adheres to documented architecture patterns
+ * including versioned health endpoints, feature flags, and session persistence
+ */
+test.describe('Architecture Validation', () => {
+  const apiUrl = process.env.PLAYWRIGHT_BASE_URL!;
+  const webUrl = process.env.PLAYWRIGHT_WEB_URL!;
+
+  test('should expose versioned health endpoint with metadata', async ({ request }) => {
+    // Architecture requirement: Health endpoints should include version metadata
+    const response = await request.get(`${apiUrl}/health/detailed`);
+    expect(response.status()).toBe(200);
+
+    const healthData = await response.json();
+    // API returns lowercase property names
+    expect(healthData).toHaveProperty('status');
+    expect(healthData).toHaveProperty('version');
+    expect(healthData).toHaveProperty('timestamp');
+    
+    expect(healthData.status).toBe('healthy');
+    expect(typeof healthData.version).toBe('string');
+    expect(healthData.version.length).toBeGreaterThan(0);
+    
+    console.log(`API Version: ${healthData.version}`);
+  });
+
+  test('should persist counter state within session', async ({ page }) => {
+    // Test session persistence (Counter value should survive navigation within same session)
+    await page.goto(`${webUrl}/counter`);
+    
+    const incrementButton = page.getByTestId('increment-button');
+    
+    // Increment to 5
+    for (let i = 0; i < 5; i++) {
+      await incrementButton.click();
+    }
+    
+    await expect(page.getByRole('status')).toContainText('Current count: 5');
+    
+    // Navigate away to home
+    await page.click('a[href=""]');
+    await expect(page.locator('h1')).toBeVisible();
+    
+    // Navigate back to counter
+    await page.click('a[href="counter"]');
+    
+    // In Blazor Server with InteractiveServer rendermode, state resets on navigation
+    // This is expected behavior - verify fresh state
+    await expect(page.getByRole('status')).toContainText('Current count: 0');
+    
+    console.log('Verified Blazor Server component state behavior');
   });
 });

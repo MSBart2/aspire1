@@ -19,11 +19,11 @@
 }
 else if (forecasts == null)
 {
-    <p><em>Loading...</em></p>
+    <p data-testid="weather-loading"><em>Loading...</em></p>
 }
 else
 {
-    <div class="row">
+    <div class="row" role="list">
         @foreach (var forecast in forecasts)
         {
             <div class="col-md-6 col-lg-4">
