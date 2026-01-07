@@ -992,6 +992,277 @@ Ensures Azure recommendations:
 - [MinVer](https://github.com/adamralph/minver)
 - [OpenTelemetry .NET](https://opentelemetry.io/docs/languages/net/)
 
+## 🤖 GitHub Copilot Integration
+
+This repository includes **specialized GitHub Copilot configuration** that transforms your AI assistant into an architecture-aware expert who enforces patterns, prevents anti-patterns, and accelerates development workflows.
+
+### Repository Instructions
+
+#### Primary Configuration: [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
+
+Teaches GitHub Copilot the architectural patterns and constraints of this .NET Aspire solution:
+
+**Key Behaviors:**
+- 📖 **Architecture-First Development** - Always loads relevant `ARCHITECTURE.md` files before suggesting code
+- 🎯 **Pattern Enforcement** - Suggests `WithReference()` for service discovery, never hard-coded URLs
+- 🚫 **Anti-Pattern Prevention** - Blocks hard-coded secrets, missing health checks, wrong endpoint patterns
+- ✅ **Example-Based Learning** - References "Good vs Bad Implementations" from architecture docs
+- 💡 **Context Scoping** - Loads only relevant docs based on task (don't load Web docs when changing API)
+
+**What Copilot Learns:**
+- Service discovery patterns (`WithReference()` vs hard-coded URLs)
+- Health check conventions (`/health/detailed` with version metadata)
+- Secrets management (Key Vault references, never in `appsettings.json`)
+- Resilience patterns (ServiceDefaults, retry/circuit breaker)
+- OpenTelemetry configuration (exclude health endpoints from traces)
+- Deployment patterns (Azure Container Apps, azd-first approach)
+- Testing strategies (xUnit, FluentAssertions, integration test patterns)
+
+#### Azure-Specific Guidance: [`.github/instructions/azure.instructions.md`](.github/instructions/azure.instructions.md)
+
+Ensures Azure recommendations match the target deployment platform:
+
+**Enforced Patterns:**
+- ☁️ **Azure Container Apps Environment** - Primary target (never suggests App Service or AKS)
+- 🛠️ **Azure Developer CLI (azd)** - Exclusive deployment tool
+- 🔑 **Key Vault + Managed Identity** - Secrets management approach
+- 📊 **Application Insights** - Observability and custom metrics patterns
+- 📦 **Bicep Templates** - Infrastructure as Code structure in `/infra/`
+
+### Custom Copilot Agents
+
+**Location:** `.github/agents/` directory
+
+Three specialized agents handle specific development workflows:
+
+| Agent | File | Primary Use Case | Invoke With |
+| --- | --- | --- | --- |
+| **@docs** | [`docs.agent.md`](.github/agents/docs.agent.md) | Documentation generation with Mermaid diagrams, component matrices, troubleshooting guides | `@docs document Redis caching` |
+| **@playwright-tester** | [`playwright-tester.agent.md`](.github/agents/playwright-tester.agent.md) | E2E test generation/debugging, semantic locator identification, Playwright MCP exploration | `@playwright-tester write weather API tests` |
+| **@commit** | [`commit.agent.md`](.github/agents/commit.agent.md) | Conventional Commits, branch management, PR creation with changelogs | `@commit` (analyzes changes automatically) |
+
+#### @docs Agent - Documentation Generation
+
+**Capabilities:**
+- Generates production-grade Markdown with Mermaid diagrams
+- Creates component matrices (services, ports, dependencies, health endpoints)
+- Includes "Good vs Bad" code examples for every pattern
+- Outputs mkdocs-material or Docusaurus-ready structure
+- Writes with confident, slightly sassy tone (matches repo style)
+
+**When to Use:**
+- Creating new `ARCHITECTURE.md` files for services
+- Documenting complex integrations (Redis, App Configuration, Key Vault)
+- Generating sequence diagrams for API flows
+- Writing deployment or troubleshooting guides
+
+#### @playwright-tester Agent - E2E Test Automation
+
+**Capabilities:**
+- Uses Playwright MCP to explore websites like a real user
+- Identifies semantic locators (`getByRole`, `getByLabel`) over CSS selectors
+- Generates TypeScript tests following project structure
+- Debugs failures using screenshots and `execute/testFailure`
+- Targets Chromium browser per project configuration
+
+**When to Use:**
+- Writing new E2E tests for Blazor UI or Minimal APIs
+- Fixing failing tests after UI/API changes
+- Exploring pages to find correct locators
+- Validating integration between Web and WeatherService
+
+#### @commit Agent - Git Workflow Automation
+
+**Capabilities:**
+- Auto-stages changes with `git add -A`
+- Prevents direct commits to `main` (creates feature branches)
+- Analyzes code diffs to infer commit type (feat/fix/docs/chore/test)
+- Infers scopes from file paths (`api`, `web`, `apphost`, `test`, `infra`, `docs`)
+- Generates Conventional Commit messages with detailed bodies
+- Creates PRs with emojis, changelogs, and testing details
+
+**When to Use:**
+- Any time you're ready to commit (replaces manual `git commit`)
+- Creating pull requests with auto-generated descriptions
+- When you've made changes but forgot what you did
+- Enforcing team commit message conventions
+
+**Scope Inference Rules:**
+- `aspire1.WeatherService/` → `(api)`
+- `aspire1.Web/` → `(web)`
+- `aspire1.AppHost/` → `(apphost)`
+- `*.Tests/` → `(test)`
+- `infra/` → `(infra)`
+- `.github/workflows/` → `(ci)`
+- Root config files → `(root)`
+
+### How This Improves Development
+
+**1. Architecture Enforcement**
+
+Copilot won't suggest anti-patterns because instructions teach it what NOT to do:
+
+```csharp
+// ❌ Copilot won't suggest this anymore
+var httpClient = new HttpClient { BaseAddress = new Uri("https://localhost:7123") };
+
+// ✅ Copilot suggests this instead (from copilot-instructions.md)
+builder.AddProject<Projects.aspire1_Web>("webfrontend")
+    .WithReference(weatherService);  // Service discovery!
+```
+
+**2. Context-Aware Suggestions**
+
+When you ask to add a secret, Copilot loads the instructions first:
+
+```bash
+User: "Add database connection to WeatherService"
+
+# Copilot process:
+1. Loads .github/copilot-instructions.md
+2. Reads secrets management section
+3. Suggests Key Vault reference with managed identity
+4. Shows example from instructions
+5. Never suggests storing in appsettings.json
+```
+
+**3. Faster Onboarding**
+
+New developers get instant guidance:
+- Copilot explains patterns as it suggests code
+- References architecture docs automatically
+- Prevents common mistakes before they happen
+
+**4. Specialized Workflows**
+
+Right tool for the right job:
+- Need docs? `@docs` generates Mermaid diagrams automatically
+- Need tests? `@playwright-tester` explores the UI first
+- Need to commit? `@commit` handles branch creation and message generation
+
+**5. Consistency Across Team**
+
+Everyone gets the same architectural guidance:
+- No more "I didn't know we used Key Vault"
+- No more hard-coded URLs sneaking into PRs
+- Commit messages follow team conventions automatically
+
+### Example Usage Scenarios
+
+**Scenario 1: Adding a New API Endpoint**
+
+```
+User: "Add a new health check endpoint to WeatherService"
+
+# Copilot loads aspire1.WeatherService/ARCHITECTURE.md
+# Suggests:
+app.MapGet("/health/detailed", (IConfiguration config) => new
+{
+    Status = "Healthy",
+    Version = config["App:Version"],
+    Timestamp = DateTime.UtcNow
+});
+
+# Matches existing pattern from architecture docs!
+```
+
+**Scenario 2: Storing Secrets**
+
+```
+User: "Store Redis connection string"
+
+# Copilot loads copilot-instructions.md secrets section
+# Suggests:
+
+1. Local development:
+   dotnet user-secrets set "ConnectionStrings:Redis" "localhost:6379"
+
+2. Azure deployment:
+   azd env set ConnectionStrings__Redis "@Microsoft.KeyVault(SecretUri=https://kv.vault.azure.net/secrets/redis-connection)"
+
+3. Never add to appsettings.json!
+```
+
+**Scenario 3: Writing Documentation**
+
+```
+User: @docs document the session state management in Web frontend
+
+# Agent explores aspire1.Web/ARCHITECTURE.md
+# Generates:
+- Mermaid diagram showing Browser → Blazor Server → Redis → Session State
+- Component matrix with session configuration
+- Good vs Bad examples (Redis-backed vs in-memory)
+- Troubleshooting section for session loss issues
+```
+
+**Scenario 4: Debugging a Test**
+
+```
+User: @playwright-tester the counter button click test is failing
+
+# Agent:
+1. Navigates to http://localhost:5142/counter
+2. Takes page snapshot
+3. Identifies button: getByRole('button', { name: 'Click me' })
+4. Reviews test-results/ screenshots
+5. Suggests: "Add await page.waitForTimeout(500) before clicking to allow SignalR connection"
+```
+
+**Scenario 5: Committing Changes**
+
+```
+User: @commit
+
+# Agent:
+📦 Auto-staged 5 files
+🛑 You're on main! Creating branch: feat/api-caching
+✅ Tests passed (26/26)
+📝 Generated commit:
+
+feat(api): add redis caching to weather service
+
+Implemented distributed caching with 5-minute expiration.
+Added cache hit/miss metrics to Application Insights.
+
+Files:
+- aspire1.WeatherService/Services/CachedWeatherService.cs
+- aspire1.WeatherService.Tests/Services/CachedWeatherServiceTests.cs
+
+Commit? (yes/no)
+```
+
+### Configuration Files Structure
+
+```
+.github/
+├── copilot-instructions.md          # Main architectural guidance
+├── instructions/
+│   └── azure.instructions.md        # Azure-specific patterns
+└── agents/
+    ├── docs.agent.md                # @docs agent configuration
+    ├── playwright-tester.agent.md   # @playwright-tester agent
+    └── commit.agent.md              # @commit agent
+```
+
+### Safe to Modify
+
+These configuration files are **documentation-only** and safe to change without impacting production:
+
+| File | Impact | Testing Required |
+| --- | --- | --- |
+| `.github/copilot-instructions.md` | Developer assistance only | None |
+| `.github/instructions/*.md` | Developer assistance only | None |
+| `.github/agents/*.agent.md` | Developer assistance only | None |
+
+**Note:** Changes to instructions/agents affect Copilot behavior but have zero runtime impact on deployed applications.
+
+### See Also
+
+- Main README: [GitHub Copilot Integration & Custom Agents](README.md#-github-copilot-your-ai-pair-programmer-on-steroids)
+- Individual agent documentation in [`.github/agents/`](.github/agents/) directory
+- Testing documentation: [tests/README.md](tests/README.md) for Playwright integration with `@playwright-tester`
+
 ---
 
 **Last Updated:** December 12, 2025
