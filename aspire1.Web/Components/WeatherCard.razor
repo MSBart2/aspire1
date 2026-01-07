@@ -1,21 +1,21 @@
 @if (Forecast != null)
 {
-    <div class="card weather-card mb-3">
+    <div class="card weather-card mb-3" role="article" data-testid="weather-card">
         <div class="card-header bg-primary text-white">
-            <h5 class="card-title mb-0">@Forecast.Date.ToString("dddd, MMMM d")</h5>
+            <h5 class="card-title mb-0" data-testid="weather-date">@Forecast.Date.ToString("dddd, MMMM d")</h5>
         </div>
         <div class="card-body">
             <div class="row">
                 <div class="col-md-6">
                     <div class="weather-temp">
-                        <span class="display-4">@Forecast.TemperatureC°</span>
+                        <span class="display-4" data-testid="weather-temp-c">@Forecast.TemperatureC°</span>
                         <span class="text-muted">C</span>
                     </div>
-                    <div class="text-muted">@Forecast.TemperatureF°F</div>
+                    <div class="text-muted" data-testid="weather-temp-f">@Forecast.TemperatureF°F</div>
                 </div>
                 <div class="col-md-6">
                     <div class="weather-summary">
-                        <h6 class="text-primary">@Forecast.Summary</h6>
+                        <h6 class="text-primary" data-testid="weather-summary">@Forecast.Summary</h6>
                         @if (ShowHumidity && Forecast.Humidity > 0)
                         {
                             <div class="humidity-info mt-2">
