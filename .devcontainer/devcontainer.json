@@ -3,6 +3,11 @@
   "image": "mcr.microsoft.com/devcontainers/dotnet:1-10.0-noble",
 
   "features": {
+    "ghcr.io/devcontainers/features/dotnet:2": {
+      "version": "8.0",
+      "installUsingApt": false,
+      "dotnetRuntimeVersions": "8.0"
+    },
     "ghcr.io/devcontainers/features/azure-cli:1": {
       "version": "latest",
       "extensions": "containerapp,account"
@@ -35,6 +40,7 @@
         "ms-dotnettools.csharp",
         "ms-dotnettools.vscode-dotnet-runtime",
         "microsoft-aspire.aspire-vscode",
+        "ms-azuretools.vscode-bicep",
         "ms-azuretools.vscode-azure-github-copilot",
         "ms-azuretools.vscode-azure-mcp-server",
         "ms-azuretools.vscode-azureresourcegroups",

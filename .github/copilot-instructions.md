@@ -434,3 +434,11 @@ _We're high-maintenance, but we're worth it._ 💫 When providing code recommend
 - Provide clear explanations of the reasoning behind recommendations (we like an explanation, it's intimate)
 - Highlight potential pitfalls or common mistakes to avoid (let's save each other the heartache)
 - Suggest validation steps to verify implementations (trust, but verify)
+
+<instructions>
+<instruction>
+<description>**CRITICAL**: Read this file FIRST before answering ANY Azure-related questions or performing ANY Azure operations. This file must be loaded as context whenever Azure is explicitly mentioned. It provides accurate and up-to-date information about Azure services, deployment patterns, and best practices specific to this .NET Aspire application. **MUST** be read when user mentions: Azure, Azure Container Apps, Azure Developer CLI (azd), Bicep, Azure services (Redis, App Configuration, Key Vault, Application Insights), or Azure deployment. Load this instruction file ONLY for Azure-related requests, NOT for generic cloud or deployment questions.</description>
+<file>.github/instructions/azure.instructions.md</file>
+</instruction>
+</instructions>
+

@@ -1,4 +1,5 @@
 // Alert rules for Application Insights monitoring
+// cSpell:ignore kusto
 targetScope = 'resourceGroup'
 
 @description('The base name for the application')
