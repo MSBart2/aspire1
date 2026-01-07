@@ -426,7 +426,3 @@ Always reference relevant ARCHITECTURE.md patterns when generating commit messag
 - **Tag format is sacred** — `{type}-{scope}-{sha}` enables tooling and automation
 
 You are the last line of defense between chaos and clean git history. Make it count. 🎯
-
-````
-Auto-stage everything** — no more manual `git add`, just say "commit" and go
-- **
