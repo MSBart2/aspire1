@@ -178,15 +178,16 @@ test.describe('Architecture Validation', () => {
     expect(response.status()).toBe(200);
 
     const healthData = await response.json();
-    expect(healthData).toHaveProperty('Status');
-    expect(healthData).toHaveProperty('Version');
-    expect(healthData).toHaveProperty('Timestamp');
+    // API returns lowercase property names
+    expect(healthData).toHaveProperty('status');
+    expect(healthData).toHaveProperty('version');
+    expect(healthData).toHaveProperty('timestamp');
     
-    expect(healthData.Status).toBe('Healthy');
-    expect(typeof healthData.Version).toBe('string');
-    expect(healthData.Version.length).toBeGreaterThan(0);
+    expect(healthData.status).toBe('healthy');
+    expect(typeof healthData.version).toBe('string');
+    expect(healthData.version.length).toBeGreaterThan(0);
     
-    console.log(`API Version: ${healthData.Version}`);
+    console.log(`API Version: ${healthData.version}`);
   });
 
   test('should persist counter state within session', async ({ page }) => {
