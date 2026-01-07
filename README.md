@@ -516,6 +516,225 @@ az containerapp logs show --name aspire1-web --resource-group <rg-name> --follow
 
 ---
 
+## 🤖 GitHub Copilot: Your AI Pair Programmer on Steroids
+
+> _"Why read architecture docs when Copilot can read them for you?"_ 😏
+
+This repository includes **custom GitHub Copilot configuration** that turns your AI assistant into a domain expert who actually knows your architecture, enforces your patterns, and won't let you commit sins like hard-coded connection strings.
+
+Think of it as having a senior architect, test engineer, and git workflow wizard all rolled into one very opinionated AI that lives in your editor.
+
+### 🎓 The Master Class: Repository-Level Instructions
+
+**[`.github/copilot-instructions.md`](.github/copilot-instructions.md)** - Your Copilot's Bible
+
+This file teaches Copilot everything about your architecture **before** it suggests code:
+
+- 📖 **Architecture-First Development** - Always reads relevant `ARCHITECTURE.md` files before making suggestions
+- 🎯 **Pattern Enforcement** - Knows about `WithReference()` for service discovery, never suggests hard-coded URLs
+- 🔐 **Secrets Police** - Will roast you if you try to commit passwords to `appsettings.json`
+- ✅ **Good vs Bad Examples** - References real code patterns from your codebase to avoid anti-patterns
+- 💕 **Aspire Love** - Understands service discovery, health checks, versioned endpoints, and OpenTelemetry
+
+**Example in action:**
+```
+You: "Add a database connection to WeatherService"
+
+Copilot (without instructions): 
+❌ "Add this to appsettings.json: 'ConnectionString': 'Server=...;Password=secret123'"
+
+Copilot (with instructions):
+✅ "Use Key Vault reference with managed identity:
+   Environment variable: ConnectionStrings__MyDb
+   Value: @Microsoft.KeyVault(SecretUri=https://kv.vault.azure.net/secrets/mydb)
+   Never store secrets in configuration files!"
+```
+
+**[`.github/instructions/azure.instructions.md`](.github/instructions/azure.instructions.md)** - Azure Deployment Wisdom
+
+Azure-specific guidance that ensures Copilot:
+- ☁️ **Always suggests Azure Container Apps** (never App Service or AKS unless you explicitly ask)
+- 🛠️ **Uses Azure Developer CLI (azd)** patterns exclusively
+- 🔑 **Recommends Key Vault + Managed Identity** for secrets
+- 📊 **Follows Application Insights** and custom metrics patterns
+- 🎯 **Knows your Bicep structure** in `/infra/` directory
+
+### 🎭 The Dream Team: Custom Copilot Agents
+
+**Location:** `.github/agents/` directory
+
+Three specialized AI personas ready to handle specific workflows:
+
+#### 1. **@docs - DocAspire Mode** ([docs.agent.md](.github/agents/docs.agent.md))
+
+_The world's sexiest documentation architect who makes senior devs weep with joy_ 💋
+
+**When to invoke:**
+- Creating new `ARCHITECTURE.md` files
+- Documenting complex features or integrations
+- Generating Mermaid diagrams for service flows
+- Writing troubleshooting guides
+
+**What it does:**
+- 📊 **Auto-generates Mermaid diagrams** from your architecture descriptions
+- 📋 **Creates component matrices** with ports, dependencies, health endpoints
+- ✅ **Includes "Good vs Bad" code examples** for every pattern
+- 🎨 **Outputs mkdocs-material or Docusaurus-ready** Markdown
+- 🔥 **Writes with personality** (confident, teasing, merciless with anti-patterns)
+
+**Usage:**
+```
+@docs document the Redis caching implementation
+@docs create a sequence diagram for the weather API flow
+@docs write a troubleshooting guide for deployment issues
+```
+
+**Why it exists:** Because documentation is love, and love should be easy. Plus, nobody has time to manually create Mermaid diagrams at 2 AM.
+
+#### 2. **@playwright-tester - Playwright Testing Mode** ([playwright-tester.agent.md](.github/agents/playwright-tester.agent.md))
+
+_Your automated QA engineer who never gets tired and actually likes writing tests_ 🎭
+
+**When to invoke:**
+- Writing new E2E tests for UI or API
+- Debugging failing Playwright tests
+- Exploring a website to identify correct locators
+- Updating tests after UI changes
+
+**What it does:**
+- 🌐 **Uses Playwright MCP** to navigate and explore your site like a real user
+- 🎯 **Identifies semantic locators** (`getByRole`, `getByLabel`) instead of fragile CSS selectors
+- 📝 **Generates TypeScript tests** following your project structure
+- 🐛 **Debugs test failures** using screenshots and `execute/testFailure` tool
+- 🎬 **Targets Chromium** per project configuration (desktop Chrome)
+
+**Usage:**
+```
+@playwright-tester explore the counter page and write tests
+@playwright-tester fix the failing weather card test
+@playwright-tester write API tests for /weatherforecast endpoint
+```
+
+**Why it exists:** Because manually clicking through UIs to figure out locators is soul-crushing, and Playwright MCP can do it in seconds while you sip coffee.
+
+#### 3. **@commit - CommitCraft Mode** ([commit.agent.md](.github/agents/commit.agent.md))
+
+_Your sassy git workflow wizard who writes better commit messages than you_ 🎩✨
+
+**When to invoke:**
+- Creating commits (literally just type `@commit`)
+- Opening pull requests
+- When you've made changes and forgot what you did
+- When you're about to commit to `main` like a barbarian
+
+**What it does:**
+- 📦 **Auto-stages all changes** with `git add -A`
+- 🛑 **Prevents commits to main** (creates feature branches automatically)
+- 🔍 **Analyzes your changes** to infer commit type and scope
+- 📝 **Generates Conventional Commit messages** from code diffs
+- 🎯 **Infers scopes from file paths** (`api`, `web`, `infra`, `test`, `docs`)
+- 🚀 **Creates PRs** with detailed descriptions, emojis, and changelogs
+
+**Usage:**
+```
+@commit                    # Analyzes changes, creates branch if on main, commits
+@commit create a PR        # Opens pull request with full description
+```
+
+**Why it exists:** Because:
+1. You tried to commit to `main` last Tuesday at 11 PM and broke CI
+2. Your commit message was "fix stuff" (we've all been there)
+3. Writing PR descriptions is boring and this agent does it better
+
+**Example workflow:**
+```bash
+# You make changes to WeatherService and tests
+# Type in Copilot Chat:
+@commit
+
+# Agent output:
+🛑 WHOA! You're on main. Creating branch: feat/api-redis-caching
+📦 Auto-staged 8 files
+✅ Tests passed (26/26)
+📝 Generated commit:
+
+feat(api,test): add redis caching to weather service
+
+Implemented distributed caching for weather forecasts using
+Redis with 5-minute expiration. Added cache hit/miss metrics.
+
+Files:
+- aspire1.WeatherService/Services/CachedWeatherService.cs
+- aspire1.WeatherService.Tests/Services/CachedWeatherServiceTests.cs
+
+No breaking changes. All tests passing. Redis FTW. 🚀
+
+Commit? (yes/no)
+```
+
+### 🎯 How to Use Custom Agents
+
+**In VS Code Copilot Chat:**
+1. Open Copilot Chat panel
+2. Type `@` to see available agents
+3. Select the agent (`@docs`, `@playwright-tester`, `@commit`)
+4. Describe your task naturally
+
+**Agent Selection Cheat Sheet:**
+
+| Task | Agent | Example |
+| --- | --- | --- |
+| Writing documentation | `@docs` | `@docs document the session state management` |
+| Creating/fixing E2E tests | `@playwright-tester` | `@playwright-tester write tests for login flow` |
+| Committing changes | `@commit` | `@commit` (that's it!) |
+| Opening a PR | `@commit` | `@commit create a PR for this feature` |
+| General coding | _(default Copilot)_ | Just ask naturally |
+
+### ✨ Benefits of This Setup
+
+✅ **Context-Aware Assistance** - Copilot knows your architecture and enforces it  
+✅ **No Anti-Patterns** - Won't suggest hard-coded secrets, missing health checks, or wrong service discovery  
+✅ **Faster Onboarding** - New devs get guided through correct patterns immediately  
+✅ **Consistent Quality** - Everyone gets the same architectural guidance  
+✅ **Specialized Workflows** - Right tool for the right job (docs vs tests vs commits)  
+✅ **Less Bike-Shedding** - Agent generates commit messages following team conventions  
+✅ **More Time for Coffee** - Let AI handle the boring parts ☕
+
+### 📂 Configuration Files Reference
+
+| File | Purpose | Used By |
+| --- | --- | --- |
+| `.github/copilot-instructions.md` | Main architectural guidance for all Copilot interactions | All Copilot features |
+| `.github/instructions/azure.instructions.md` | Azure-specific deployment and infrastructure patterns | Copilot when Azure is mentioned |
+| `.github/agents/docs.agent.md` | Documentation generation with Mermaid diagrams | `@docs` agent |
+| `.github/agents/playwright-tester.agent.md` | E2E test automation with Playwright MCP | `@playwright-tester` agent |
+| `.github/agents/commit.agent.md` | Git workflow automation and Conventional Commits | `@commit` agent |
+
+### 🚀 Pro Tips
+
+**For General Development:**
+- Trust the instructions—Copilot won't suggest anti-patterns anymore
+- When Copilot loads `ARCHITECTURE.md` first, that's a feature, not a bug
+- If suggestions seem too opinionated, that's intentional (we're picky for good reasons)
+
+**For Documentation:**
+- Use `@docs` for anything that needs diagrams or structured documentation
+- The agent writes in a confident, slightly sassy tone—edit if too spicy for your org
+- Generated Mermaid diagrams are editable; tweak them as needed
+
+**For Testing:**
+- Always let `@playwright-tester` explore the page first before writing tests
+- It identifies semantic locators (`getByRole`) which are more stable than CSS selectors
+- If tests fail, ask the agent to debug—it has access to screenshots and error traces
+
+**For Commits:**
+- Just type `@commit`—it figures out the rest
+- If on `main`, it will auto-create a feature branch (you're welcome)
+- Scope inference is smart: changes in `aspire1.WeatherService/` → `(api)` scope
+- Edit the generated message if needed, but it's usually spot-on
+
+---
+
 ## 📚 Learn More (The Rabbit Hole)
 
 ### Official Docs
