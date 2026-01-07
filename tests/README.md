@@ -441,7 +441,7 @@ npm run test:report       # View detailed HTML report
 - **API Response Times**: < 1 second for weather endpoints
 - **Page Load Times**: < 5 seconds for initial page load
 - **Weather Data Load**: < 3 seconds for weather table display
-- **Cache Performance**: Second loads should be up to 3x faster than first loads (test threshold allows variance for CI environments)
+- **Cache Performance**: Second loads should not be more than 3x slower than first loads (test threshold allows variance for CI environments)
 
 ### Recent Improvements (January 2026)
 
