@@ -111,6 +111,9 @@ test.describe('Service Integration', () => {
     // Generate some activity that should create metrics
     await page.goto(`${webUrl}/counter`);
 
+    // Wait for Blazor SignalR connection to establish (required for interactive components)
+    await page.waitForTimeout(500);
+
     // Click counter multiple times to generate custom metrics
     const incrementButton = page.getByTestId('increment-button');
     for (let i = 0; i < 5; i++) {
