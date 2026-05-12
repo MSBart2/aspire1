@@ -58,7 +58,13 @@ test.describe('Blazor Web Application', () => {
     await expect(page.locator('h1')).toContainText('Weather');
 
     // Wait for weather data to load
+    // Note: Output cache was removed to ensure feature flag changes are reflected immediately
     await page.getByTestId('weather-card').first().waitFor({ timeout: 10000 });
+
+    // Verify we're not seeing cached loading placeholders
+    const loadingIndicator = page.getByTestId('weather-loading');
+    const isLoadingVisible = await loadingIndicator.isVisible().catch(() => false);
+    expect(!isLoadingVisible).toBeTruthy(); // Should have rendered actual content, not cached "Loading..."
 
     // Verify weather cards are visible
     const cards = page.getByTestId('weather-card');
