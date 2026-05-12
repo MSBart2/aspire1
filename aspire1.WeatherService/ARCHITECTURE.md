@@ -177,11 +177,23 @@ ApplicationMetrics.CacheMisses.Add(1,
 
 ### `GET /health/detailed`
 
-**Purpose:** Enhanced health check with version metadata and feature flag status for OpenTelemetry correlation
+**Purpose:** Enhanced health check with dependency status, version metadata, and feature flag status for OpenTelemetry correlation
 
 **Feature Flag:**
 - Controlled by `DetailedHealth` feature flag in Azure App Configuration
 - Returns minimal health info if feature is disabled
+
+**How It Works:**
+
+The endpoint queries the `IHealthCheckService` to retrieve actual dependency health status:
+- **Redis**: Checked if configured via `ConnectionStrings:cache`
+- **Azure App Configuration**: Checked if configured via `AppConfig:Endpoint`
+- **Self**: App liveness check (always included)
+
+Health status mapping:
+- `Healthy` → `"healthy"` (all dependencies OK)
+- `Degraded` → `"degraded"` (some dependencies slow or unstable)
+- `Unhealthy` → `"unhealthy"` (one or more dependencies down)
 
 **Response (when DetailedHealth enabled):**
 
@@ -190,9 +202,46 @@ ApplicationMetrics.CacheMisses.Add(1,
   "status": "healthy",
   "version": "1.0.0+a1af010e18",
   "commitSha": "a1af010",
-  "service": "weatherservice",
+  "service": "apiservice",
   "timestamp": "2025-12-09T18:30:00Z",
   "uptime": 3600.5,
+  "dependencies": {
+    "redis": {
+      "status": "healthy",
+      "duration": 5.23
+    },
+    "appconfig": {
+      "status": "healthy",
+      "duration": 12.45
+    }
+  },
+  "features": {
+    "detailedHealth": true,
+    "weatherForecast": true
+  }
+}
+```
+
+**Response (when dependency degraded):**
+
+```json
+{
+  "status": "degraded",
+  "version": "1.0.0+a1af010e18",
+  "commitSha": "a1af010",
+  "service": "apiservice",
+  "timestamp": "2025-12-09T18:30:00Z",
+  "uptime": 3600.5,
+  "dependencies": {
+    "redis": {
+      "status": "degraded",
+      "duration": 5000.0
+    },
+    "appconfig": {
+      "status": "healthy",
+      "duration": 12.45
+    }
+  },
   "features": {
     "detailedHealth": true,
     "weatherForecast": true
@@ -210,9 +259,12 @@ ApplicationMetrics.CacheMisses.Add(1,
 
 **Use Cases:**
 
+- Container Apps health probes detect when Redis or App Config become unreachable
+- Service mesh health dashboards show real dependency status
+- Monitoring/alerting tools get accurate health signals (no false positives)
 - Debugging distributed traces (find which version produced a span)
 - Uptime monitoring (seconds since container start)
-- Service mesh health dashboards
+- Dependency performance monitoring (check response times)
 
 ---
 

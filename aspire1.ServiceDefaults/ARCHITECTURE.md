@@ -215,105 +215,74 @@ private static TBuilder AddOpenTelemetryExporters<TBuilder>(this TBuilder builde
 
 ### `AddDefaultHealthChecks<TBuilder>()`
 
-**Purpose:** Add basic health checks for liveness probes
+**Purpose:** Register the liveness health check for the application
 
 **Default Health Checks:**
 
-| Check Name | Tag    | Purpose                    | Response         |
-| ---------- | ------ | -------------------------- | ---------------- |
-| `self`     | `live` | Verifies app is responsive | Always `Healthy` |
-
-## 📊 Custom Application Metrics
-
-**Location:** [`ApplicationMetrics.cs`](ApplicationMetrics.cs)
-
-### Available Metrics
-
-The `ApplicationMetrics` static class provides pre-configured OpenTelemetry instruments:
-
-```csharp
-using Microsoft.Extensions.Hosting;
-
-// Track counter clicks
-ApplicationMetrics.CounterClicks.Add(1,
-    new KeyValuePair<string, object?>("page", "counter"),
-    new KeyValuePair<string, object?>("range", ApplicationMetrics.GetCountRange(count)));
-
-// Track weather API calls
-ApplicationMetrics.WeatherApiCalls.Add(1,
-    new KeyValuePair<string, object?>("endpoint", "weatherforecast"));
-
-// Track sunny forecasts
-ApplicationMetrics.SunnyForecasts.Add(1,
-    new KeyValuePair<string, object?>("temperature_range",
-        ApplicationMetrics.GetTemperatureRange(tempC)));
-
-// Track cache hits/misses
-ApplicationMetrics.CacheHits.Add(1,
-    new KeyValuePair<string, object?>("entity", "weather"));
-ApplicationMetrics.CacheMisses.Add(1,
-    new KeyValuePair<string, object?>("entity", "weather"));
-
-// Track API call duration
-ApplicationMetrics.ApiCallDuration.Record(stopwatch.ElapsedMilliseconds,
-    new KeyValuePair<string, object?>("endpoint", "weatherforecast"),
-    new KeyValuePair<string, object?>("success", "true"));
-````
-
-### Helper Methods
-
-**Cardinality Reduction:**
-
-```csharp
-// Categorize counter values into ranges
-string range = ApplicationMetrics.GetCountRange(42); // Returns "11-50"
-
-// Categorize temperatures into ranges
-string tempRange = ApplicationMetrics.GetTemperatureRange(18); // Returns "16-25"
-```
-
-**Why Ranges?** Reduces metric cardinality from potentially thousands of unique values to 4-5 categories, improving Application Insights query performance and cost.
-
-### Meter Configuration
-
-**Meter Name:** `aspire1.metrics`
-**Version:** `1.0.0`
-
-Registered in `ConfigureOpenTelemetry`:
-
-```csharp
-.WithMetrics(metrics =>
-{
-    metrics.AddAspNetCoreInstrumentation()
-        .AddHttpClientInstrumentation()
-        .AddRuntimeInstrumentation()
-        .AddMeter("aspire1.metrics"); // ← Custom application metrics
-})
-```
-
-**Usage Example:**
-
-```csharp
-// Add custom health checks
-builder.Services.AddHealthChecks()
-    .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"])
-    .AddNpgSql(connectionString, name: "database", tags: ["ready"]);
-```
+| Check Name | Tag    | Purpose                               | Response         |
+| ---------- | ------ | ------------------------------------- | ---------------- |
+| `self`     | `live` | Verifies app is responsive (liveness) | Always `Healthy` |
 
 **Tags Explained:**
 
-- **`live`**: Liveness probe - "Is the app alive?" (Always pass unless crashed)
-- **`ready`**: Readiness probe - "Is the app ready to serve traffic?" (Check dependencies)
+- **`live`**: Liveness probe — "Is the app alive?" (Always passes unless crashed)
+- **`ready`**: Readiness probe — "Is the app ready to serve traffic?" (Registered by each service)
+
+**Design: Service-Specific Readiness Checks**
+
+`AddDefaultHealthChecks` registers only the `self` liveness check. `ServiceDefaults` has no knowledge of service-specific dependencies like Redis or Azure App Configuration — those are unique to each consuming service.
+
+Each service is responsible for registering its own readiness checks:
+
+- **`aspire1.WeatherService`** registers `redis` and `appconfig` checks in `Program.cs` (conditional on configuration, offline-first)
+- Other services register their own dependency checks as needed
+
+This keeps `ServiceDefaults` generic and reusable across all services.
 
 **Implementation:**
 
 ```csharp
 public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder)
+    where TBuilder : IHostApplicationBuilder
 {
     builder.Services.AddHealthChecks()
+        // Add a default liveness check to ensure app is responsive
         .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
 
     return builder;
+}
+```
+
+**Service-Level Readiness Check Example (WeatherService/Program.cs):**
+
+```csharp
+// Redis readiness check — registered conditionally (offline-first)
+var redisConnectionString = builder.Configuration.GetConnectionString("cache");
+if (!string.IsNullOrEmpty(redisConnectionString))
+{
+    try
+    {
+        builder.Services.AddHealthChecks()
+            .AddRedis(redisConnectionString, "redis", tags: ["ready"]);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"⚠️  Warning: Could not register Redis health check: {ex.Message}");
+    }
+}
+
+// Azure App Config readiness check — registered conditionally (offline-first)
+if (!string.IsNullOrEmpty(appConfigEndpoint))
+{
+    try
+    {
+        builder.Services.AddHealthChecks()
+            .AddCheck<AppConfigHealthCheck>("appconfig", tags: ["ready"]);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"⚠️  Warning: Could not register App Config health check: {ex.Message}");
+    }
 }
 ```
 
@@ -544,6 +513,63 @@ traces
 | where message contains "Processing weather request"
 | project timestamp, message, severityLevel, userId
 ```
+
+## 📊 ApplicationMetrics
+
+### Overview
+
+`ApplicationMetrics.cs` provides a set of static `Counter` and `Histogram` instruments for tracking business-specific metrics across the solution. All instruments use the meter name **`aspire1.metrics`**, which is registered in `ConfigureOpenTelemetry` via `.AddMeter("aspire1.metrics")`.
+
+### Instruments
+
+| Instrument | Type | Unit | Tags | Purpose |
+| --- | --- | --- | --- | --- |
+| `counter.clicks` | `Counter<long>` | clicks | `page`, `range` | Counter page button clicks |
+| `weather.api.calls` | `Counter<long>` | calls | `endpoint`, `feature_enabled` | Total weather API calls |
+| `weather.sunny.count` | `Counter<long>` | forecasts | `temperature_range` | Forecasts with "Sunny" summary |
+| `cache.hits` | `Counter<long>` | hits | `entity` | Redis cache hits |
+| `cache.misses` | `Counter<long>` | misses | `entity` | Redis cache misses |
+| `api.call.duration` | `Histogram<double>` | ms | `endpoint`, `success` | API call duration |
+
+### Helper Methods
+
+**`GetCountRange(int count)`** — Categorizes count values into ranges to limit cardinality:
+
+| Input | Output |
+| --- | --- |
+| 0–10 | `"0-10"` |
+| 11–50 | `"11-50"` |
+| 51–100 | `"51-100"` |
+| 101+ | `"100+"` |
+
+**`GetTemperatureRange(int temperatureC)`** — Categorizes Celsius values:
+
+| Input | Output |
+| --- | --- |
+| < 0 | `"<0"` |
+| 0–15 | `"0-15"` |
+| 16–25 | `"16-25"` |
+| > 25 | `">25"` |
+
+### Usage Example
+
+```csharp
+// Track a weather API call
+ApplicationMetrics.WeatherApiCalls.Add(1,
+    new KeyValuePair<string, object?>("endpoint", "weatherforecast"),
+    new KeyValuePair<string, object?>("feature_enabled", "true"));
+
+// Track a sunny forecast with temperature categorization
+ApplicationMetrics.SunnyForecasts.Add(1,
+    new KeyValuePair<string, object?>("temperature_range",
+        ApplicationMetrics.GetTemperatureRange(forecast.TemperatureC)));
+```
+
+### Cardinality Rationale
+
+Tag values are bucketed (e.g., temperature ranges instead of raw °C) to prevent high-cardinality metric explosions in Application Insights. High-cardinality tags (thousands of distinct values) dramatically increase storage costs and query times in time-series databases.
+
+---
 
 ## 🎯 Testing
 
