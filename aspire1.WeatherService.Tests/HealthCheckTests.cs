@@ -1,7 +1,10 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.FeatureManagement;
+using System.Net;
 using System.Reflection;
 using System.Text.Json;
+using aspire1.WeatherService.Services;
 
 namespace aspire1.WeatherService.Tests;
 
@@ -265,5 +268,113 @@ public class HealthCheckTests
         }
 
         return JsonSerializer.Serialize(response);
+    }
+
+    // --- AppConfigHealthCheck unit tests ---
+
+    [Fact]
+    public async Task AppConfigHealthCheck_NotConfigured_ReturnsHealthy()
+    {
+        // Arrange
+        var config = new ConfigurationBuilder().Build();
+        var factory = Substitute.For<IHttpClientFactory>();
+        var check = new AppConfigHealthCheck(config, factory);
+        var ctx = CreateHealthCheckContext("appconfig");
+
+        // Act
+        var result = await check.CheckHealthAsync(ctx);
+
+        // Assert
+        result.Status.Should().Be(HealthStatus.Healthy);
+        result.Description.Should().Contain("not configured");
+        factory.DidNotReceive().CreateClient(Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task AppConfigHealthCheck_ServiceReturns401_ReturnsHealthy()
+    {
+        // Azure App Configuration returns 401 when the service is reachable but the request is unauthenticated.
+        // 401 = service is UP.
+        // Arrange
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["AppConfig:Endpoint"] = "https://mystore.azconfig.io" })
+            .Build();
+        var factory = CreateHttpClientFactory(HttpStatusCode.Unauthorized);
+        var check = new AppConfigHealthCheck(config, factory);
+        var ctx = CreateHealthCheckContext("appconfig");
+
+        // Act
+        var result = await check.CheckHealthAsync(ctx);
+
+        // Assert
+        result.Status.Should().Be(HealthStatus.Healthy);
+    }
+
+    [Fact]
+    public async Task AppConfigHealthCheck_ServiceReturns5xx_ReturnsDegraded()
+    {
+        // Arrange
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["AppConfig:Endpoint"] = "https://mystore.azconfig.io" })
+            .Build();
+        var factory = CreateHttpClientFactory(HttpStatusCode.ServiceUnavailable);
+        var check = new AppConfigHealthCheck(config, factory);
+        var ctx = CreateHealthCheckContext("appconfig");
+
+        // Act
+        var result = await check.CheckHealthAsync(ctx);
+
+        // Assert
+        result.Status.Should().Be(HealthStatus.Degraded);
+        result.Description.Should().Contain("503");
+    }
+
+    [Fact]
+    public async Task AppConfigHealthCheck_NetworkException_ReturnsUnhealthy()
+    {
+        // Arrange
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["AppConfig:Endpoint"] = "https://mystore.azconfig.io" })
+            .Build();
+        var factory = CreateThrowingHttpClientFactory(new HttpRequestException("Connection refused"));
+        var check = new AppConfigHealthCheck(config, factory);
+        var ctx = CreateHealthCheckContext("appconfig");
+
+        // Act
+        var result = await check.CheckHealthAsync(ctx);
+
+        // Assert
+        result.Status.Should().Be(HealthStatus.Unhealthy);
+        result.Description.Should().Contain("unreachable");
+    }
+
+    private static HealthCheckContext CreateHealthCheckContext(string name)
+    {
+        var registration = new HealthCheckRegistration(name, Substitute.For<IHealthCheck>(), null, null);
+        return new HealthCheckContext { Registration = registration };
+    }
+
+    private static IHttpClientFactory CreateHttpClientFactory(HttpStatusCode statusCode)
+    {
+        var handler = new FakeHttpMessageHandler(_ => Task.FromResult(new HttpResponseMessage(statusCode)));
+        var client = new HttpClient(handler);
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient(Arg.Any<string>()).Returns(client);
+        return factory;
+    }
+
+    private static IHttpClientFactory CreateThrowingHttpClientFactory(Exception exception)
+    {
+        var handler = new FakeHttpMessageHandler(_ => throw exception);
+        var client = new HttpClient(handler);
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient(Arg.Any<string>()).Returns(client);
+        return factory;
+    }
+
+    private sealed class FakeHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> sendFunc) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => sendFunc(request);
     }
 }

@@ -101,6 +101,10 @@ else
     builder.Services.AddDistributedMemoryCache();
 }
 
+// Register named HttpClient for AppConfig health check probe (5s timeout, no retries on health probes)
+builder.Services.AddHttpClient("appconfig-health")
+    .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(5));
+
 // Add services to the container.
 builder.Services.AddProblemDetails();
 
