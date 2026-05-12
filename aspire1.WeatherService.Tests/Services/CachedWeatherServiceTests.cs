@@ -132,7 +132,25 @@ public class CachedWeatherServiceTests
 
         // Assert
         result.Should().OnlyContain(f => f.TemperatureC >= -20 && f.TemperatureC < 55);
-        result.Should().OnlyContain(f => f.TemperatureF == 32 + (int)(f.TemperatureC / 0.5556));
+        result.Should().OnlyContain(f => f.TemperatureF == (int)Math.Round(f.TemperatureC * 1.8 + 32));
+    }
+
+    [Theory]
+    [InlineData(0, 32)]       // Freezing point
+    [InlineData(20, 68)]      // Room temperature
+    [InlineData(-20, -4)]     // Cold snap (the canary in the coal mine)
+    [InlineData(100, 212)]    // Boiling point
+    [InlineData(-40, -40)]    // Same in both scales
+    public void WeatherForecast_TemperatureF_VariousTemperatures_CalculatesCorrectly(int temperatureC, int expectedF)
+    {
+        // Arrange
+        var forecast = new WeatherForecast(DateOnly.FromDateTime(DateTime.Now), temperatureC, "Test", 50);
+
+        // Act
+        var temperatureF = forecast.TemperatureF;
+
+        // Assert
+        temperatureF.Should().Be(expectedF);
     }
 
     [Fact]

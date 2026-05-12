@@ -46,5 +46,5 @@ public class WeatherApiClient(HttpClient httpClient)
 
 public record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary, int Humidity)
 {
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+    public int TemperatureF => (int)Math.Round(TemperatureC * 1.8 + 32);
 }
