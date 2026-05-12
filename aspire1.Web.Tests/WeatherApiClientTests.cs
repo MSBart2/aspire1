@@ -65,7 +65,7 @@ public class WeatherApiClientTests
     }
 
     [Fact]
-    public async Task GetWeatherAsync_HttpError_ThrowsException()
+    public async Task GetWeatherAsync_HttpError_ReturnsEmpty()
     {
         // Arrange
         var handler = new MockHttpMessageHandler(HttpStatusCode.InternalServerError, "");
@@ -73,10 +73,10 @@ public class WeatherApiClientTests
         var client = new WeatherApiClient(httpClient);
 
         // Act
-        var act = async () => await client.GetWeatherAsync();
+        var result = await client.GetWeatherAsync();
 
         // Assert
-        await act.Should().ThrowAsync<HttpRequestException>();
+        result.Should().BeEmpty();
     }
 
     [Fact]

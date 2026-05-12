@@ -13,23 +13,31 @@ public class WeatherApiClient(HttpClient httpClient)
 
         try
         {
-            List<WeatherForecast>? forecasts = null;
-
-            await foreach (var forecast in httpClient.GetFromJsonAsAsyncEnumerable<WeatherForecast>("/weatherforecast", cancellationToken))
+            try
             {
-                if (forecasts?.Count >= maxItems)
-                {
-                    break;
-                }
-                if (forecast is not null)
-                {
-                    forecasts ??= [];
-                    forecasts.Add(forecast);
-                }
-            }
+                using var response = await httpClient.GetAsync("/weatherforecast", cancellationToken);
 
-            success = true;
-            return forecasts?.ToArray() ?? [];
+                if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+                {
+                    // API side feature disabled — return empty so UI can show friendly message
+                    return Array.Empty<WeatherForecast>();
+                }
+
+                response.EnsureSuccessStatusCode();
+
+                var forecasts = await response.Content.ReadFromJsonAsync<WeatherForecast[]?>(cancellationToken: cancellationToken)
+                                ?? Array.Empty<WeatherForecast>();
+
+                success = true;
+
+                if (forecasts.Length <= maxItems) return forecasts;
+                return forecasts.Take(maxItems).ToArray();
+            }
+            catch (HttpRequestException)
+            {
+                // Network or non-success response that couldn't be parsed — return empty and let UI handle it
+                return Array.Empty<WeatherForecast>();
+            }
         }
         finally
         {
