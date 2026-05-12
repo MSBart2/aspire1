@@ -138,6 +138,24 @@ public class WeatherApiClientTests
         temperatureF.Should().Be(32); // 0°C = 32°F
     }
 
+    [Theory]
+    [InlineData(0, 32)]       // Freezing point
+    [InlineData(20, 68)]      // Room temperature
+    [InlineData(-20, -4)]     // Cold snap (the canary in the coal mine)
+    [InlineData(100, 212)]    // Boiling point
+    [InlineData(-40, -40)]    // Same in both scales
+    public void WeatherForecast_TemperatureF_VariousTemperatures_CalculatesCorrectly(int temperatureC, int expectedF)
+    {
+        // Arrange
+        var forecast = new WeatherForecast(DateOnly.FromDateTime(DateTime.Now), temperatureC, "Test", 50);
+
+        // Act
+        var temperatureF = forecast.TemperatureF;
+
+        // Assert
+        temperatureF.Should().Be(expectedF);
+    }
+
     [Fact]
     public void WeatherForecast_Humidity_StoresCorrectly()
     {
