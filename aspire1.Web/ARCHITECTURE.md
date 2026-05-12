@@ -179,16 +179,28 @@ sequenceDiagram
     participant API as aspire1.WeatherService
 
     User->>Weather.razor: Navigate to /weather
-    Weather.razor->>WeatherApiClient: GetWeatherAsync()
-    WeatherApiClient->>ServiceDiscovery: Resolve "weatherservice"
-    ServiceDiscovery-->>WeatherApiClient: https://weatherservice:8443
-    WeatherApiClient->>API: GET /weatherforecast
-    API-->>WeatherApiClient: Weather data (JSON with humidity)
-    WeatherApiClient-->>Weather.razor: List<WeatherForecast>
-    Weather.razor->>WeatherCard: Render cards for each forecast
-    WeatherCard->>FeatureManager: IsEnabledAsync("WeatherHumidity")
-    FeatureManager-->>WeatherCard: true/false
-    WeatherCard-->>User: Rendered cards (with/without humidity)
+    Weather.razor->>FeatureManager: IsEnabledAsync("WeatherForecast")
+    FeatureManager-->>Weather.razor: true / false
+    alt Feature disabled (flag = false)
+        Weather.razor-->>User: ⚠️ "Feature Disabled" alert
+    else Feature enabled
+        Weather.razor->>WeatherApiClient: GetWeatherAsync()
+        WeatherApiClient->>ServiceDiscovery: Resolve "weatherservice"
+        ServiceDiscovery-->>WeatherApiClient: https://weatherservice:8443
+        WeatherApiClient->>API: GET /weatherforecast
+        alt API returns 200
+            API-->>WeatherApiClient: Weather data (JSON with humidity)
+            WeatherApiClient-->>Weather.razor: WeatherApiResult(forecasts, IsUnavailable=false)
+            Weather.razor->>WeatherCard: Render cards for each forecast
+            WeatherCard->>FeatureManager: IsEnabledAsync("WeatherHumidity")
+            FeatureManager-->>WeatherCard: true/false
+            WeatherCard-->>User: Rendered cards (with/without humidity)
+        else API returns 503 (flag disabled on API side)
+            API-->>WeatherApiClient: 503 Service Unavailable
+            WeatherApiClient-->>Weather.razor: WeatherApiResult([], IsUnavailable=true)
+            Weather.razor-->>User: ⏳ "Weather Data Temporarily Unavailable" alert
+        end
+    end
 ```
 
 ---
@@ -306,23 +318,48 @@ builder.Services.AddHttpClient<WeatherApiClient>(client =>
 **Key Features:**
 
 - **Service Discovery:** `"weatherservice"` name resolves via Aspire
-- **Resilience:** Automatic retry, circuit breaker, timeout (from ServiceDefaults)
+- **Resilience:** Automatic retry, circuit breaker, timeout (from ServiceDefaults) — 503 responses are excluded from retries
 - **Scheme Preference:** Fallback to localhost for standalone debugging
 - **Instrumentation:** All HTTP calls traced via OpenTelemetry
+- **Graceful degradation:** 503 (feature flag disabled) and `HttpRequestException` both return an empty `WeatherApiResult` instead of throwing
+
+**Return type — `WeatherApiResult`:**
+
+```csharp
+/// <param name="Forecasts">Empty array when IsUnavailable is true.</param>
+/// <param name="IsUnavailable">true when 503 or HttpRequestException; false on success.</param>
+public sealed record WeatherApiResult(WeatherForecast[] Forecasts, bool IsUnavailable = false);
+```
 
 **Implementation:**
 
 ```csharp
-public class WeatherApiClient(HttpClient httpClient)
+public class WeatherApiClient(HttpClient httpClient, ILogger<WeatherApiClient> logger)
 {
-    public async Task<WeatherForecast[]> GetWeatherAsync(
+    public async Task<WeatherApiResult> GetWeatherAsync(
         int maxItems = 10,
         CancellationToken cancellationToken = default)
     {
-        // Calls: https://weatherservice:8443/weatherforecast?maxItems=10
-        return await httpClient.GetFromJsonAsync<WeatherForecast[]>(
-            $"/weatherforecast?maxItems={maxItems}",
-            cancellationToken);
+        try
+        {
+            var response = await httpClient.GetAsync("/weatherforecast", cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+            {
+                // 503 = feature flag disabled on API side — not a transient fault
+                logger.LogInformation("WeatherForecast feature is disabled on the API side (503).");
+                return new WeatherApiResult([], IsUnavailable: true);
+            }
+
+            response.EnsureSuccessStatusCode();
+            var forecasts = await response.Content.ReadFromJsonAsync<WeatherForecast[]>(...);
+            return new WeatherApiResult(forecasts ?? [], IsUnavailable: false);
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogWarning(ex, "HTTP error fetching weather forecast. Returning empty.");
+            return new WeatherApiResult([], IsUnavailable: true);
+        }
     }
 }
 
@@ -330,6 +367,24 @@ public record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary, 
 {
     public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
 }
+```
+
+**503 retry suppression (Program.cs):**
+
+```csharp
+// 503 = intentional "feature disabled" — do NOT retry
+builder.Services.Configure<HttpStandardResilienceOptions>(
+    "WeatherApiClient-StandardResiliencePipeline",
+    options =>
+    {
+        var defaultShouldHandle = options.Retry.ShouldHandle;
+        options.Retry.ShouldHandle = args =>
+        {
+            if (args.Outcome.Result?.StatusCode == HttpStatusCode.ServiceUnavailable)
+                return ValueTask.FromResult(false);
+            return defaultShouldHandle(args);
+        };
+    });
 ```
 
 ## 🎨 Layout & Styling
@@ -829,7 +884,9 @@ Blazor: WebSocket connection failed: Error during WebSocket handshake
 
 ### Service Discovery Fails
 
-**Symptom:** `WeatherApiClient` throws `HttpRequestException`
+**Symptom:** `WeatherApiClient` throws `HttpRequestException` and the weather page crashes
+
+> ℹ️ **Note:** Since the fix for [#11](https://github.com/MSBart2/aspire1/issues/11), `HttpRequestException` no longer propagates to the UI. Instead, `WeatherApiClient` catches it, logs a warning, and returns `WeatherApiResult([], IsUnavailable: true)`. The weather page renders a user-friendly "temporarily unavailable" message. If you see a crash, the exception originates elsewhere.
 
 **Diagnostics:**
 
@@ -843,6 +900,23 @@ azd env get-values | findstr weatherservice
 - Ensure AppHost uses `WithReference(weatherService)` on Web
 - Verify base address configuration in Program.cs
 - Check WeatherService is healthy: `curl https://weatherservice:8443/health`
+
+### Weather Page Shows "⏳ Weather Data Temporarily Unavailable"
+
+**Symptom:** Weather page renders the info-banner instead of forecast cards
+
+**Cause:** `WeatherApiClient` received a 503 (feature flag disabled on API side) or a network error
+
+**Diagnostics:**
+
+- Check WeatherService logs for `WeatherForecast feature flag is disabled` message
+- Check `WeatherApiClient` logs for `HTTP error fetching weather forecast` warning
+- Verify the `WeatherForecast` feature flag state in Azure App Configuration
+
+**Fix:**
+
+- Enable the `WeatherForecast` flag in Azure App Configuration (or `appsettings.json` locally)
+- Wait up to 30 seconds for the flag cache to refresh
 
 ### Weather Page Shows "Loading..." Forever
 
@@ -910,7 +984,7 @@ public class WeatherApiClient
 
 **Why it's bad:** Socket exhaustion, no resilience, no service discovery, no telemetry
 
-#### ✅ GOOD: Typed client with DI (Current implementation)
+#### ✅ GOOD: Typed client with DI and graceful degradation (Current implementation)
 
 ```csharp
 // Program.cs
@@ -924,12 +998,16 @@ builder.Services.AddHttpClient<WeatherApiClient>(client =>
 });
 
 // WeatherApiClient.cs
-public class WeatherApiClient(HttpClient httpClient)
+public class WeatherApiClient(HttpClient httpClient, ILogger<WeatherApiClient> logger)
 {
-    // Primary constructor injection
-    public async Task<WeatherForecast[]> GetWeatherAsync(...)
+    public async Task<WeatherApiResult> GetWeatherAsync(...)
     {
-        return await httpClient.GetFromJsonAsAsyncEnumerable<WeatherForecast>(...);
+        var response = await httpClient.GetAsync("/weatherforecast", cancellationToken);
+        if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
+            return new WeatherApiResult([], IsUnavailable: true);
+        response.EnsureSuccessStatusCode();
+        var forecasts = await response.Content.ReadFromJsonAsync<WeatherForecast[]>(...);
+        return new WeatherApiResult(forecasts ?? []);
     }
 }
 ```

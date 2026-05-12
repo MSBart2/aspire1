@@ -1,16 +1,43 @@
 namespace aspire1.Web;
 
-/// <summary>Encapsulates the result of a weather forecast API call, distinguishing between
-/// a service-unavailable response (feature flag disabled / transient error) and a legitimately
-/// empty 200 response (no forecast data available).</summary>
+/// <summary>
+/// Encapsulates the result of a weather forecast API call, distinguishing between
+/// a service-unavailable response (feature flag disabled or transient error) and a
+/// legitimately empty 200 response (no forecast data available).
+/// </summary>
+/// <param name="Forecasts">The weather forecasts returned by the API. Empty when <see cref="IsUnavailable"/> is <see langword="true"/>.</param>
+/// <param name="IsUnavailable">
+/// <see langword="true"/> when the API returned 503 Service Unavailable (feature flag disabled) or an
+/// <see cref="HttpRequestException"/> was caught; <see langword="false"/> when the API responded successfully.
+/// </param>
 public sealed record WeatherApiResult(WeatherForecast[] Forecasts, bool IsUnavailable = false);
 
+/// <summary>
+/// Typed HTTP client for the aspire1 WeatherService API.
+/// Handles 503 Service Unavailable responses gracefully — returning an empty result instead of
+/// throwing — so the Blazor UI can distinguish "feature disabled" from a real failure.
+/// </summary>
 public class WeatherApiClient(HttpClient httpClient, ILogger<WeatherApiClient> logger)
 {
     // Constants for telemetry to avoid string allocations
     private const string SuccessTrue = "true";
     private const string SuccessFalse = "false";
 
+    /// <summary>
+    /// Fetches weather forecast data from the WeatherService API.
+    /// </summary>
+    /// <param name="maxItems">Maximum number of forecast entries to return. Defaults to 10.</param>
+    /// <param name="cancellationToken">Token to cancel the asynchronous operation.</param>
+    /// <returns>
+    /// A <see cref="WeatherApiResult"/> containing the forecast array and an availability flag.
+    /// Returns <c>IsUnavailable = true</c> with an empty array when the API responds with 503
+    /// (feature flag disabled) or when an <see cref="HttpRequestException"/> is caught.
+    /// </returns>
+    /// <remarks>
+    /// A 503 response is treated as intentional behavior (the WeatherForecast feature flag is
+    /// disabled on the API side) and is not retried. All other HTTP errors are caught and logged
+    /// at Warning level before returning an empty graceful result.
+    /// </remarks>
     public async Task<WeatherApiResult> GetWeatherAsync(int maxItems = 10, CancellationToken cancellationToken = default)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
