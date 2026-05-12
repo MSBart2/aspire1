@@ -14,7 +14,7 @@ The **Web** project is a Blazor Server application that provides the user interf
 - Redis-backed session state with offline-first fallback
 - Azure App Configuration for feature flags
 - OpenTelemetry instrumentation (via ServiceDefaults)
-- Output caching for performance
+- Output caching middleware registered (not used on feature-flag-driven pages — see [Output Caching and Feature Flags](#output-caching-and-feature-flags))
 
 ## 🏗️ Architecture
 
@@ -402,7 +402,7 @@ sequenceDiagram
 4. **Redis Distributed Cache & Session State:** Configures Redis with offline-first fallback to in-memory
 5. **Razor Components:** Blazor Server rendering engine
 6. **Interactive Server Mode:** SignalR-based component updates
-7. **Output Cache:** Response caching for performance
+7. **Output Cache:** Middleware registered for future use on static/non-feature-flag pages. **NOT used on dynamic, feature-flag-driven pages** (see [Output Caching and Feature Flags](#output-caching-and-feature-flags))
 8. **HTTP Client:** Typed client with service discovery fallback
 9. **Middleware Pipeline:**
    - Exception handler (production)
@@ -576,7 +576,7 @@ var theme = HttpContext.Session.GetInt32("PreferredTheme");
 
 ### Output Caching
 
-**Purpose:** Cache responses to reduce load on API service
+**Purpose:** Cache responses to reduce load on the API service — for **static routes and Minimal API endpoints only**. Do **not** apply to Blazor pages that render feature-flag-conditional UI (see [Output Caching and Feature Flags](#output-caching-and-feature-flags)).
 
 **Configuration:**
 
@@ -585,16 +585,20 @@ builder.Services.AddOutputCache();
 app.UseOutputCache();
 ```
 
-**Usage Example (Future):**
+**Usage Example (Future — Minimal API / static endpoint):**
 
 ```csharp
-// Cache weather data for 60 seconds
+// Cache weather data for 60 seconds on a plain API endpoint (no feature flags in rendered HTML)
 app.MapGet("/api/weather", async (WeatherApiClient client) =>
 {
     return await client.GetWeatherAsync();
 })
 .CacheOutput(policy => policy.Expire(TimeSpan.FromSeconds(60)));
 ```
+
+> **Weather.razor does NOT use `[OutputCache]`** — feature flag state must be evaluated on every request.
+> Redis caches the underlying weather API data at a 5-minute TTL, so the absence of page-level HTML
+> caching has no meaningful performance cost.
 
 ### SignalR Optimization
 
@@ -964,9 +968,9 @@ builder.AddServiceDefaults(); // ← Adds standard resilience handler to ALL Htt
 
 ---
 
-### 4. Blazor Streaming & Caching
+### 4. Blazor Streaming & Feature Flags
 
-#### ❌ BAD: No caching or streaming
+#### ❌ BAD: No streaming
 
 ```razor
 @page "/weather"
@@ -982,23 +986,48 @@ builder.AddServiceDefaults(); // ← Adds standard resilience handler to ALL Htt
 
 **Why it's bad:** Repeated API calls, slow perceived performance, server load
 
-#### ✅ GOOD: StreamRendering + OutputCache (Current implementation)
+#### ❌ BAD: StreamRendering + OutputCache on a feature-flag-driven page (old implementation — bug fixed in #12)
 
 ```razor
 @page "/weather"
 @attribute [StreamRendering(true)]
-@attribute [OutputCache(Duration = 5)]
+@attribute [OutputCache(Duration = 5)]  // ← WRONG on pages with feature flags
 
 @code {
     protected override async Task OnInitializedAsync()
     {
-        forecasts = await WeatherApi.GetWeatherAsync();
-        // Streams UI incrementally, caches for 5 seconds
+        featureEnabled = await FeatureManager.IsEnabledAsync("WeatherForecast");
+        // Cache locks in the HTML for 5 seconds — feature flag toggles have NO effect
+        // until the cache expires. StreamRendering interaction can even cache the
+        // "Loading..." placeholder before async data arrives.
     }
 }
 ```
 
-**Why it's good:** Fast initial render, reduced API calls, better UX, lower server load
+**Why it's bad:** `OutputCache` caches the entire server-rendered HTML, including feature-flag conditional UI. Toggling `WeatherForecast` or `WeatherHumidity` has no visible effect for up to 5 seconds. Combined with `StreamRendering`, the cached snapshot may capture the `Loading...` placeholder as permanent content.
+
+#### ✅ GOOD: StreamRendering without OutputCache on dynamic feature-flag pages (Current implementation)
+
+```razor
+@page "/weather"
+@attribute [StreamRendering(true)]
+// No [OutputCache] — feature flags must be checked on every request
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        featureEnabled = await FeatureManager.IsEnabledAsync("WeatherForecast");
+        if (featureEnabled)
+        {
+            showHumidity = await FeatureManager.IsEnabledAsync("WeatherHumidity");
+            forecasts = await WeatherApi.GetWeatherAsync();
+            // Streams UI incrementally — Redis caches API data at 5-minute TTL
+        }
+    }
+}
+```
+
+**Why it's good:** Feature flag changes are reflected immediately on every request. `StreamRendering` still provides fast initial HTML delivery. Redis caches the API data (5-minute TTL), so removing page-level HTML caching has no meaningful performance cost.
 
 ---
 
@@ -1083,28 +1112,40 @@ public class WeatherService
 
 ---
 
-### 7. Output Caching Configuration
+### 7. Output Caching and Feature Flags
 
-#### ❌ BAD: No caching or app-level only
+> **Key Rule:** Never use `[OutputCache]` on pages that render feature-flag-conditional UI.
 
-```csharp
-builder.Services.AddOutputCache(); // Registered but never used
+Output caching caches the entire server-rendered HTML response. Feature flags are runtime-dynamic state. Combining them means users see stale UI for the cache TTL duration after a flag toggle.
+
+#### ❌ BAD: `[OutputCache]` on a feature-flag page
+
+```razor
+// Weather.razor — WRONG (fixed in #12)
+@attribute [OutputCache(Duration = 5)]  // Caches the whole page — feature flags frozen for 5s
+
+@code {
+    featureEnabled = await FeatureManager.IsEnabledAsync("WeatherForecast");
+    // If disabled when cached → users see "Feature Disabled" for 5s after re-enabling
+    // If cached during StreamRendering → "Loading..." placeholder served as content
+}
 ```
 
-**Why it's bad:** Misses opportunity to reduce API calls, inconsistent performance
+**Why it's bad:** Feature flag changes have no visible effect until the cache expires. `StreamRendering` interaction can lock in the pre-data placeholder. Creates confusion when testing flags (appears flags aren't working).
 
-#### ✅ GOOD: Page-level caching (Current implementation)
+#### ✅ GOOD: Output cache middleware registered for static/API routes; not applied to feature-flag pages
 
 ```csharp
-// Program.cs
+// Program.cs — middleware registered for future use on static/Minimal API routes
 builder.Services.AddOutputCache();
 app.UseOutputCache();
 
-// Weather.razor
-@attribute [OutputCache(Duration = 5)]
+// Weather.razor — NO [OutputCache] attribute
+// @attribute [StreamRendering(true)]  ← streaming is fine and encouraged
+// Redis handles API data caching at 5-minute TTL — no page-level cache needed
 ```
 
-**Why it's good:** Reduced API load, configurable per-page, balances freshness vs performance
+**Why it's good:** Feature flags are checked on every request. `StreamRendering` still streams content quickly. Redis API caching absorbs the load — page-level HTML caching provides no meaningful benefit here. For future static endpoints (no feature flags), `[OutputCache]` remains available via the registered middleware.
 
 ---
 
