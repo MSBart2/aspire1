@@ -1,6 +1,6 @@
 namespace aspire1.Web;
 
-public class WeatherApiClient(HttpClient httpClient)
+public class WeatherApiClient(HttpClient httpClient, ILogger<WeatherApiClient> logger)
 {
     // Constants for telemetry to avoid string allocations
     private const string SuccessTrue = "true";
@@ -13,23 +13,29 @@ public class WeatherApiClient(HttpClient httpClient)
 
         try
         {
-            List<WeatherForecast>? forecasts = null;
+            var response = await httpClient.GetAsync("/weatherforecast", cancellationToken);
 
-            await foreach (var forecast in httpClient.GetFromJsonAsAsyncEnumerable<WeatherForecast>("/weatherforecast", cancellationToken))
+            if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
             {
-                if (forecasts?.Count >= maxItems)
-                {
-                    break;
-                }
-                if (forecast is not null)
-                {
-                    forecasts ??= [];
-                    forecasts.Add(forecast);
-                }
+                // Feature flag is disabled on the API side — not an error, just temporarily unavailable
+                logger.LogInformation("WeatherForecast feature is disabled on the API side (503). Returning empty.");
+                return [];
             }
 
+            response.EnsureSuccessStatusCode();
+
+            var forecasts = await response.Content.ReadFromJsonAsync<WeatherForecast[]>(cancellationToken: cancellationToken);
             success = true;
-            return forecasts?.ToArray() ?? [];
+
+            if (forecasts == null || forecasts.Length == 0)
+                return [];
+
+            return forecasts.Length <= maxItems ? forecasts : forecasts[..maxItems];
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogWarning(ex, "HTTP error fetching weather forecast. Returning empty.");
+            return [];
         }
         finally
         {

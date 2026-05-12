@@ -1,5 +1,6 @@
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.FeatureManagement;
 using System.Net;
 using System.Text.Json;
@@ -87,12 +88,45 @@ public class OutputCacheFeatureFlagTests : BunitContext
             "humidity info must not render in weather cards when the WeatherHumidity flag is disabled");
     }
 
+    [Fact]
+    public void WeatherForecastFlag_WhenEnabledButApiReturns503_RendersUnavailableMessage()
+    {
+        // Arrange — feature flag says enabled on the frontend (hasn't refreshed yet from App Config)
+        var featureManager = Substitute.For<IFeatureManager>();
+        featureManager.IsEnabledAsync("WeatherForecast").Returns(Task.FromResult(true));
+        featureManager.IsEnabledAsync("WeatherHumidity").Returns(Task.FromResult(false));
+
+        // But the API returns 503 — feature disabled on the service side already (race condition window)
+        Services.AddSingleton(featureManager);
+        Services.AddSingleton(BuildFakeWeatherApiClientWith503());
+
+        // Act
+        var cut = Render<Weather>();
+
+        // Assert — friendly unavailability message, not a crash and not weather cards
+        cut.Markup.Should().Contain("Temporarily Unavailable",
+            "should render the unavailability message when the API returns empty due to 503");
+        cut.FindAll("[data-testid='weather-card']").Should().BeEmpty(
+            "no weather cards should appear when the API is returning 503");
+        cut.FindAll(".alert-warning").Should().BeEmpty(
+            "the feature-disabled alert must not appear — the feature is enabled on the frontend side");
+    }
+
     private static WeatherApiClient BuildFakeWeatherApiClient(WeatherForecast[] forecasts)
     {
         var json = JsonSerializer.Serialize(forecasts);
         var handler = new FakeHttpMessageHandler(json);
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
-        return new WeatherApiClient(httpClient);
+        var logger = Substitute.For<ILogger<WeatherApiClient>>();
+        return new WeatherApiClient(httpClient, logger);
+    }
+
+    private static WeatherApiClient BuildFakeWeatherApiClientWith503()
+    {
+        var handler = new FakeHttpMessageHandler503();
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        var logger = Substitute.For<ILogger<WeatherApiClient>>();
+        return new WeatherApiClient(httpClient, logger);
     }
 
     private sealed class FakeHttpMessageHandler(string content) : HttpMessageHandler
@@ -103,5 +137,12 @@ public class OutputCacheFeatureFlagTests : BunitContext
             {
                 Content = new StringContent(content, System.Text.Encoding.UTF8, "application/json")
             });
+    }
+
+    private sealed class FakeHttpMessageHandler503 : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
     }
 }

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace aspire1.Web.Tests;
 
@@ -16,7 +17,8 @@ public class WeatherApiClientTests
         };
 
         var httpClient = CreateHttpClientWithResponse(forecasts);
-        var client = new WeatherApiClient(httpClient);
+        var logger = Substitute.For<ILogger<WeatherApiClient>>();
+        var client = new WeatherApiClient(httpClient, logger);
 
         // Act
         var result = await client.GetWeatherAsync();
@@ -41,7 +43,8 @@ public class WeatherApiClientTests
         };
 
         var httpClient = CreateHttpClientWithResponse(forecasts);
-        var client = new WeatherApiClient(httpClient);
+        var logger = Substitute.For<ILogger<WeatherApiClient>>();
+        var client = new WeatherApiClient(httpClient, logger);
 
         // Act
         var result = await client.GetWeatherAsync(maxItems: 2);
@@ -55,7 +58,8 @@ public class WeatherApiClientTests
     {
         // Arrange
         var httpClient = CreateHttpClientWithResponse(Array.Empty<WeatherForecast>());
-        var client = new WeatherApiClient(httpClient);
+        var logger = Substitute.For<ILogger<WeatherApiClient>>();
+        var client = new WeatherApiClient(httpClient, logger);
 
         // Act
         var result = await client.GetWeatherAsync();
@@ -65,18 +69,51 @@ public class WeatherApiClientTests
     }
 
     [Fact]
-    public async Task GetWeatherAsync_HttpError_ThrowsException()
+    public async Task GetWeatherAsync_ServiceUnavailableResponse_ReturnsEmptyArray()
     {
-        // Arrange
-        var handler = new MockHttpMessageHandler(HttpStatusCode.InternalServerError, "");
+        // Arrange — 503 means the feature flag is disabled on the API side
+        var handler = new MockHttpMessageHandler(HttpStatusCode.ServiceUnavailable, "");
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
-        var client = new WeatherApiClient(httpClient);
+        var logger = Substitute.For<ILogger<WeatherApiClient>>();
+        var client = new WeatherApiClient(httpClient, logger);
 
         // Act
-        var act = async () => await client.GetWeatherAsync();
+        var result = await client.GetWeatherAsync();
 
         // Assert
-        await act.Should().ThrowAsync<HttpRequestException>();
+        result.Should().BeEmpty("503 means feature is disabled — client should return [] not throw");
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_InternalServerError_ReturnsEmptyArray()
+    {
+        // Arrange — other HTTP errors are caught gracefully
+        var handler = new MockHttpMessageHandler(HttpStatusCode.InternalServerError, "");
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        var logger = Substitute.For<ILogger<WeatherApiClient>>();
+        var client = new WeatherApiClient(httpClient, logger);
+
+        // Act
+        var result = await client.GetWeatherAsync();
+
+        // Assert
+        result.Should().BeEmpty("HTTP errors should return empty array instead of throwing");
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_HttpRequestException_ReturnsEmptyArray()
+    {
+        // Arrange — handler that throws to simulate network failure
+        var handler = new ThrowingHttpMessageHandler();
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        var logger = Substitute.For<ILogger<WeatherApiClient>>();
+        var client = new WeatherApiClient(httpClient, logger);
+
+        // Act
+        var result = await client.GetWeatherAsync();
+
+        // Assert
+        result.Should().BeEmpty("network errors should return empty array instead of propagating");
     }
 
     [Fact]
@@ -89,7 +126,8 @@ public class WeatherApiClientTests
         };
 
         var httpClient = CreateHttpClientWithResponse(forecasts);
-        var client = new WeatherApiClient(httpClient);
+        var logger = Substitute.For<ILogger<WeatherApiClient>>();
+        var client = new WeatherApiClient(httpClient, logger);
         var cts = new CancellationTokenSource();
         cts.Cancel();
 
@@ -116,7 +154,8 @@ public class WeatherApiClientTests
             .ToArray();
 
         var httpClient = CreateHttpClientWithResponse(forecasts);
-        var client = new WeatherApiClient(httpClient);
+        var logger = Substitute.For<ILogger<WeatherApiClient>>();
+        var client = new WeatherApiClient(httpClient, logger);
 
         // Act
         var result = await client.GetWeatherAsync(maxItems: maxItems);
@@ -196,5 +235,11 @@ public class WeatherApiClientTests
 
             return Task.FromResult(response);
         }
+    }
+
+    private class ThrowingHttpMessageHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => throw new HttpRequestException("Simulated network failure");
     }
 }
