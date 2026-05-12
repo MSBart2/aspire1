@@ -54,9 +54,9 @@ else
         {
             // Check humidity feature flag once for all cards
             showHumidity = await FeatureManager.IsEnabledAsync("WeatherHumidity");
-            forecasts = await WeatherApi.GetWeatherAsync();
-            if (forecasts.Length == 0)
-                forecastsUnavailable = true;
+            var result = await WeatherApi.GetWeatherAsync();
+            forecasts = result.Forecasts;
+            forecastsUnavailable = result.IsUnavailable;
         }
     }
 }

@@ -24,11 +24,12 @@ public class WeatherApiClientTests
         var result = await client.GetWeatherAsync();
 
         // Assert
-        result.Should().HaveCount(2);
-        result[0].TemperatureC.Should().Be(20);
-        result[0].Summary.Should().Be("Sunny");
-        result[1].TemperatureC.Should().Be(22);
-        result[1].Summary.Should().Be("Cloudy");
+        result.IsUnavailable.Should().BeFalse();
+        result.Forecasts.Should().HaveCount(2);
+        result.Forecasts[0].TemperatureC.Should().Be(20);
+        result.Forecasts[0].Summary.Should().Be("Sunny");
+        result.Forecasts[1].TemperatureC.Should().Be(22);
+        result.Forecasts[1].Summary.Should().Be("Cloudy");
     }
 
     [Fact]
@@ -50,13 +51,14 @@ public class WeatherApiClientTests
         var result = await client.GetWeatherAsync(maxItems: 2);
 
         // Assert
-        result.Should().HaveCount(2);
+        result.IsUnavailable.Should().BeFalse();
+        result.Forecasts.Should().HaveCount(2);
     }
 
     [Fact]
-    public async Task GetWeatherAsync_EmptyResponse_ReturnsEmptyArray()
+    public async Task GetWeatherAsync_EmptySuccessResponse_ReturnsEmptyForecastsNotUnavailable()
     {
-        // Arrange
+        // Arrange — API returns 200 with an empty array (legitimate empty result, not a feature-flag 503)
         var httpClient = CreateHttpClientWithResponse(Array.Empty<WeatherForecast>());
         var logger = Substitute.For<ILogger<WeatherApiClient>>();
         var client = new WeatherApiClient(httpClient, logger);
@@ -64,12 +66,14 @@ public class WeatherApiClientTests
         // Act
         var result = await client.GetWeatherAsync();
 
-        // Assert
-        result.Should().BeEmpty();
+        // Assert — empty forecasts, but NOT marked unavailable; the service responded successfully
+        result.Forecasts.Should().BeEmpty("API returned an empty array — no forecasts available");
+        result.IsUnavailable.Should().BeFalse(
+            "a 200 with empty body is a valid response — IsUnavailable must be false to distinguish from 503");
     }
 
     [Fact]
-    public async Task GetWeatherAsync_ServiceUnavailableResponse_ReturnsEmptyArray()
+    public async Task GetWeatherAsync_ServiceUnavailableResponse_ReturnsEmptyAndMarksUnavailable()
     {
         // Arrange — 503 means the feature flag is disabled on the API side
         var handler = new MockHttpMessageHandler(HttpStatusCode.ServiceUnavailable, "");
@@ -81,11 +85,13 @@ public class WeatherApiClientTests
         var result = await client.GetWeatherAsync();
 
         // Assert
-        result.Should().BeEmpty("503 means feature is disabled — client should return [] not throw");
+        result.Forecasts.Should().BeEmpty("503 means feature is disabled — no forecasts returned");
+        result.IsUnavailable.Should().BeTrue(
+            "503 must set IsUnavailable so the UI can render the unavailability message, not a blank list");
     }
 
     [Fact]
-    public async Task GetWeatherAsync_InternalServerError_ReturnsEmptyArray()
+    public async Task GetWeatherAsync_InternalServerError_ReturnsEmptyAndMarksUnavailable()
     {
         // Arrange — other HTTP errors are caught gracefully
         var handler = new MockHttpMessageHandler(HttpStatusCode.InternalServerError, "");
@@ -97,11 +103,12 @@ public class WeatherApiClientTests
         var result = await client.GetWeatherAsync();
 
         // Assert
-        result.Should().BeEmpty("HTTP errors should return empty array instead of throwing");
+        result.Forecasts.Should().BeEmpty("HTTP errors should return empty array instead of throwing");
+        result.IsUnavailable.Should().BeTrue("HTTP errors should mark the result as unavailable");
     }
 
     [Fact]
-    public async Task GetWeatherAsync_HttpRequestException_ReturnsEmptyArray()
+    public async Task GetWeatherAsync_HttpRequestException_ReturnsEmptyAndMarksUnavailable()
     {
         // Arrange — handler that throws to simulate network failure
         var handler = new ThrowingHttpMessageHandler();
@@ -113,7 +120,8 @@ public class WeatherApiClientTests
         var result = await client.GetWeatherAsync();
 
         // Assert
-        result.Should().BeEmpty("network errors should return empty array instead of propagating");
+        result.Forecasts.Should().BeEmpty("network errors should return empty array instead of propagating");
+        result.IsUnavailable.Should().BeTrue("network errors should mark the result as unavailable");
     }
 
     [Fact]
@@ -161,7 +169,8 @@ public class WeatherApiClientTests
         var result = await client.GetWeatherAsync(maxItems: maxItems);
 
         // Assert
-        result.Should().HaveCount(Math.Min(maxItems, forecasts.Length));
+        result.IsUnavailable.Should().BeFalse();
+        result.Forecasts.Should().HaveCount(Math.Min(maxItems, forecasts.Length));
     }
 
     [Fact]

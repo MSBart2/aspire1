@@ -1,12 +1,17 @@
 namespace aspire1.Web;
 
+/// <summary>Encapsulates the result of a weather forecast API call, distinguishing between
+/// a service-unavailable response (feature flag disabled / transient error) and a legitimately
+/// empty 200 response (no forecast data available).</summary>
+public sealed record WeatherApiResult(WeatherForecast[] Forecasts, bool IsUnavailable = false);
+
 public class WeatherApiClient(HttpClient httpClient, ILogger<WeatherApiClient> logger)
 {
     // Constants for telemetry to avoid string allocations
     private const string SuccessTrue = "true";
     private const string SuccessFalse = "false";
 
-    public async Task<WeatherForecast[]> GetWeatherAsync(int maxItems = 10, CancellationToken cancellationToken = default)
+    public async Task<WeatherApiResult> GetWeatherAsync(int maxItems = 10, CancellationToken cancellationToken = default)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var success = false;
@@ -17,9 +22,11 @@ public class WeatherApiClient(HttpClient httpClient, ILogger<WeatherApiClient> l
 
             if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
             {
-                // Feature flag is disabled on the API side — not an error, just temporarily unavailable
+                // Feature flag is disabled on the API side — not an error, just temporarily unavailable.
+                // Mark success=true: the API responded correctly; 503 here is intentional behavior.
+                success = true;
                 logger.LogInformation("WeatherForecast feature is disabled on the API side (503). Returning empty.");
-                return [];
+                return new WeatherApiResult([], IsUnavailable: true);
             }
 
             response.EnsureSuccessStatusCode();
@@ -28,14 +35,15 @@ public class WeatherApiClient(HttpClient httpClient, ILogger<WeatherApiClient> l
             success = true;
 
             if (forecasts == null || forecasts.Length == 0)
-                return [];
+                return new WeatherApiResult([], IsUnavailable: false);
 
-            return forecasts.Length <= maxItems ? forecasts : forecasts[..maxItems];
+            var trimmed = forecasts.Length <= maxItems ? forecasts : forecasts[..maxItems];
+            return new WeatherApiResult(trimmed, IsUnavailable: false);
         }
         catch (HttpRequestException ex)
         {
             logger.LogWarning(ex, "HTTP error fetching weather forecast. Returning empty.");
-            return [];
+            return new WeatherApiResult([], IsUnavailable: true);
         }
         finally
         {

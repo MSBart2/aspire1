@@ -103,8 +103,9 @@ builder.Services.AddHttpClient<WeatherApiClient>(client =>
 
 // Suppress 503 retries for WeatherApiClient — 503 means "feature disabled", not a transient fault.
 // The pipeline name follows the {HttpClientName}-{PipelineKey} convention from Microsoft.Extensions.Http.Resilience.
+const string WeatherApiClientResiliencePipelineName = "WeatherApiClient-StandardResiliencePipeline";
 builder.Services.Configure<Microsoft.Extensions.Http.Resilience.HttpStandardResilienceOptions>(
-    "WeatherApiClient-StandardResiliencePipeline",
+    WeatherApiClientResiliencePipelineName,
     options =>
     {
         var defaultShouldHandle = options.Retry.ShouldHandle;
