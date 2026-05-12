@@ -3,18 +3,34 @@ using System.Text.Json;
 
 namespace aspire1.WeatherService.Services;
 
+/// <summary>
+/// Provides weather forecast data with a Redis-backed cache-aside pattern.
+/// Falls back gracefully to generating fresh data when the cache is unavailable.
+/// </summary>
 public class CachedWeatherService
 {
     private readonly IDistributedCache _cache;
     private readonly ILogger<CachedWeatherService> _logger;
     private const string CacheKeyPrefix = "api:weather:forecast";
 
+    /// <summary>
+    /// Initializes a new instance of <see cref="CachedWeatherService"/>.
+    /// </summary>
+    /// <param name="cache">The distributed cache used to store and retrieve forecast data.</param>
+    /// <param name="logger">The logger instance for cache hit/miss and error diagnostics.</param>
     public CachedWeatherService(IDistributedCache cache, ILogger<CachedWeatherService> logger)
     {
         _cache = cache;
         _logger = logger;
     }
 
+    /// <summary>
+    /// Returns an array of weather forecasts, serving from cache when available
+    /// and writing through to cache on a miss (5-minute TTL).
+    /// </summary>
+    /// <param name="maxItems">The maximum number of forecast entries to return. Defaults to 10.</param>
+    /// <param name="cancellationToken">A token to cancel the async operation.</param>
+    /// <returns>An array of <see cref="WeatherForecast"/> records.</returns>
     public async Task<WeatherForecast[]> GetWeatherForecastAsync(
         int maxItems = 10,
         CancellationToken cancellationToken = default)
@@ -70,6 +86,7 @@ public class CachedWeatherService
 
     private static WeatherForecast[] GenerateForecasts(int count)
     {
+        // Generates randomized forecast data for demonstration purposes
         var summaries = new[] { "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching" };
 
         return Enumerable.Range(1, count).Select(index =>
@@ -84,7 +101,17 @@ public class CachedWeatherService
     }
 }
 
+/// <summary>
+/// Represents a single-day weather forecast returned by the WeatherService API.
+/// </summary>
+/// <param name="Date">The forecast date.</param>
+/// <param name="TemperatureC">Temperature in Celsius.</param>
+/// <param name="Summary">A short human-readable summary (e.g., "Warm", "Freezing").</param>
+/// <param name="Humidity">Relative humidity as a percentage (0–100).</param>
 public record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary, int Humidity)
 {
+    /// <summary>
+    /// Gets the temperature in Fahrenheit, derived from <see cref="TemperatureC"/>.
+    /// </summary>
     public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
 }
