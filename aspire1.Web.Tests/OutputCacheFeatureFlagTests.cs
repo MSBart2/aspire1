@@ -88,6 +88,45 @@ public class OutputCacheFeatureFlagTests : BunitContext
             "humidity info must not render in weather cards when the WeatherHumidity flag is disabled");
     }
 
+    [Fact]
+    public void WeatherForecastFlag_RaceCondition_FeatureFlagEnabledButApiReturns503_ShowsEmptyList()
+    {
+        // Arrange — Issue #11 race condition scenario:
+        // Frontend still thinks WeatherForecast is enabled (hasn't refreshed config in 30s)
+        // But API already returned 503 (feature disabled on backend, already refreshed)
+        // WeatherApiClient should gracefully return empty array, allowing component to render empty state
+        // (the component itself shows "Feature Disabled" only when ITS feature flag check returns false,
+        // not when the API returns no data)
+        
+        var featureManager = Substitute.For<IFeatureManager>();
+        featureManager.IsEnabledAsync("WeatherForecast").Returns(Task.FromResult(true));
+        featureManager.IsEnabledAsync("WeatherHumidity").Returns(Task.FromResult(false));
+
+        var handler = new FakeHttpMessageHandler503();
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        var logger = LoggerFactory
+            .Create(builder => builder.AddConsole())
+            .CreateLogger<WeatherApiClient>();
+        var client = new WeatherApiClient(httpClient, logger);
+
+        Services.AddSingleton(featureManager);
+        Services.AddSingleton(client);
+
+        // Act — render Weather.razor with this race condition
+        var cut = Render<Weather>();
+
+        // Assert — should not crash; WeatherApiClient returns empty array gracefully,
+        // component renders empty list instead of crashing
+        cut.Markup.Should().Contain("Weather Forecast", "heading should render");
+        cut.FindAll("[data-testid='weather-card']").Should().BeEmpty(
+            "no weather cards should appear when API returns no data (race condition handled gracefully)");
+        
+        // Specifically verify no feature-flag-disabled message appears
+        // (since our feature flag check said true, but API returned 503)
+        cut.Markup.Should().NotContain("Feature Disabled",
+            "should not show 'Feature Disabled' (our flag check passed, API just returned no data)");
+    }
+
     private static WeatherApiClient BuildFakeWeatherApiClient(WeatherForecast[] forecasts)
     {
         var json = JsonSerializer.Serialize(forecasts);
@@ -106,6 +145,20 @@ public class OutputCacheFeatureFlagTests : BunitContext
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(content, System.Text.Encoding.UTF8, "application/json")
+            });
+    }
+
+    /// <summary>
+    /// Handler that returns 503 Service Unavailable, simulating API-side feature flag disabled state.
+    /// Used to test the race condition scenario in issue #11.
+    /// </summary>
+    private sealed class FakeHttpMessageHandler503 : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            {
+                Content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json")
             });
     }
 }
