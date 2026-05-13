@@ -33,7 +33,7 @@ public class WeatherApiClient(HttpClient httpClient)
         }
         catch (HttpRequestException)
         {
-            // Network or non-success response that couldn't be parsed — return empty and let UI handle it
+            // Network failures and non-success HTTP responses (from EnsureSuccessStatusCode) return empty for UI handling
             return Array.Empty<WeatherForecast>();
         }
         finally

@@ -80,6 +80,21 @@ public class WeatherApiClientTests
     }
 
     [Fact]
+    public async Task GetWeatherAsync_ServiceUnavailable_ReturnsEmpty()
+    {
+        // Arrange
+        var handler = new MockHttpMessageHandler(HttpStatusCode.ServiceUnavailable, "");
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        var client = new WeatherApiClient(httpClient);
+
+        // Act
+        var result = await client.GetWeatherAsync();
+
+        // Assert
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task GetWeatherAsync_CancellationRequested_ThrowsOperationCanceledException()
     {
         // Arrange
