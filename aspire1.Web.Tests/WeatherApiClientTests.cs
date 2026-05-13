@@ -1,10 +1,15 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace aspire1.Web.Tests;
 
 public class WeatherApiClientTests
 {
+    private readonly ILogger<WeatherApiClient> _mockLogger = LoggerFactory
+        .Create(builder => builder.AddConsole())
+        .CreateLogger<WeatherApiClient>();
+
     [Fact]
     public async Task GetWeatherAsync_SuccessfulResponse_ReturnsForecasts()
     {
@@ -15,8 +20,8 @@ public class WeatherApiClientTests
             new WeatherForecast(DateOnly.FromDateTime(DateTime.Now.AddDays(1)), 22, "Cloudy", 75)
         };
 
-        var httpClient = CreateHttpClientWithResponse(forecasts);
-        var client = new WeatherApiClient(httpClient);
+        var httpClient = CreateStreamingHttpClient(forecasts);
+        var client = new WeatherApiClient(httpClient, _mockLogger);
 
         // Act
         var result = await client.GetWeatherAsync();
@@ -30,32 +35,34 @@ public class WeatherApiClientTests
     }
 
     [Fact]
-    public async Task GetWeatherAsync_WithMaxItems_ReturnsLimitedForecasts()
+    public async Task GetWeatherAsync_WithMaxItems_StopsStreamingAtLimit()
     {
         // Arrange
-        var forecasts = new[]
-        {
-            new WeatherForecast(DateOnly.FromDateTime(DateTime.Now), 20, "Sunny", 65),
-            new WeatherForecast(DateOnly.FromDateTime(DateTime.Now.AddDays(1)), 22, "Cloudy", 75),
-            new WeatherForecast(DateOnly.FromDateTime(DateTime.Now.AddDays(2)), 18, "Rainy", 85)
-        };
+        var forecasts = Enumerable.Range(0, 100)
+            .Select(i => new WeatherForecast(
+                DateOnly.FromDateTime(DateTime.Now.AddDays(i)),
+                20 + i % 30,
+                $"Summary{i}",
+                50 + i % 50))
+            .ToArray();
 
-        var httpClient = CreateHttpClientWithResponse(forecasts);
-        var client = new WeatherApiClient(httpClient);
+        var httpClient = CreateStreamingHttpClient(forecasts);
+        var client = new WeatherApiClient(httpClient, _mockLogger);
 
         // Act
-        var result = await client.GetWeatherAsync(maxItems: 2);
+        var result = await client.GetWeatherAsync(maxItems: 5);
 
-        // Assert
-        result.Should().HaveCount(2);
+        // Assert — streaming should stop at 5, not load entire 100-item array into memory
+        result.Should().HaveCount(5);
+        result.Should().Equal(forecasts.Take(5));
     }
 
     [Fact]
     public async Task GetWeatherAsync_EmptyResponse_ReturnsEmptyArray()
     {
         // Arrange
-        var httpClient = CreateHttpClientWithResponse(Array.Empty<WeatherForecast>());
-        var client = new WeatherApiClient(httpClient);
+        var httpClient = CreateStreamingHttpClient(Array.Empty<WeatherForecast>());
+        var client = new WeatherApiClient(httpClient, _mockLogger);
 
         // Act
         var result = await client.GetWeatherAsync();
@@ -65,18 +72,33 @@ public class WeatherApiClientTests
     }
 
     [Fact]
-    public async Task GetWeatherAsync_HttpError_ThrowsException()
+    public async Task GetWeatherAsync_HttpError500_ReturnsEmpty()
     {
         // Arrange
         var handler = new MockHttpMessageHandler(HttpStatusCode.InternalServerError, "");
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
-        var client = new WeatherApiClient(httpClient);
+        var client = new WeatherApiClient(httpClient, _mockLogger);
 
         // Act
-        var act = async () => await client.GetWeatherAsync();
+        var result = await client.GetWeatherAsync();
 
         // Assert
-        await act.Should().ThrowAsync<HttpRequestException>();
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_ServiceUnavailable503_ReturnsEmptyGracefully()
+    {
+        // Arrange — this is the exact scenario from issue #11: feature flag disabled on API returns 503
+        var handler = new MockHttpMessageHandler(HttpStatusCode.ServiceUnavailable, "");
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        var client = new WeatherApiClient(httpClient, _mockLogger);
+
+        // Act
+        var result = await client.GetWeatherAsync();
+
+        // Assert — should not throw, should return empty for UI to handle gracefully
+        result.Should().BeEmpty();
     }
 
     [Fact]
@@ -88,8 +110,8 @@ public class WeatherApiClientTests
             new WeatherForecast(DateOnly.FromDateTime(DateTime.Now), 20, "Sunny", 65)
         };
 
-        var httpClient = CreateHttpClientWithResponse(forecasts);
-        var client = new WeatherApiClient(httpClient);
+        var httpClient = CreateStreamingHttpClient(forecasts);
+        var client = new WeatherApiClient(httpClient, _mockLogger);
         var cts = new CancellationTokenSource();
         cts.Cancel();
 
@@ -115,14 +137,34 @@ public class WeatherApiClientTests
                 50 + i))
             .ToArray();
 
-        var httpClient = CreateHttpClientWithResponse(forecasts);
-        var client = new WeatherApiClient(httpClient);
+        var httpClient = CreateStreamingHttpClient(forecasts);
+        var client = new WeatherApiClient(httpClient, _mockLogger);
 
         // Act
         var result = await client.GetWeatherAsync(maxItems: maxItems);
 
         // Assert
         result.Should().HaveCount(Math.Min(maxItems, forecasts.Length));
+    }
+
+    [Fact]
+    public void GetWeatherAsync_InvalidMaxItems_ThrowsArgumentOutOfRangeException()
+    {
+        // Arrange
+        var httpClient = new HttpClient(new MockHttpMessageHandler(HttpStatusCode.OK, "[]"))
+        {
+            BaseAddress = new Uri("http://localhost")
+        };
+        var client = new WeatherApiClient(httpClient, _mockLogger);
+
+        // Act & Assert — maxItems must be between 1 and 1000
+        var actZero = async () => await client.GetWeatherAsync(maxItems: 0);
+        var actNegative = async () => await client.GetWeatherAsync(maxItems: -5);
+        var actTooLarge = async () => await client.GetWeatherAsync(maxItems: 1001);
+
+        actZero.Should().ThrowAsync<ArgumentOutOfRangeException>();
+        actNegative.Should().ThrowAsync<ArgumentOutOfRangeException>();
+        actTooLarge.Should().ThrowAsync<ArgumentOutOfRangeException>();
     }
 
     [Fact]
@@ -181,15 +223,41 @@ public class WeatherApiClientTests
         forecast.TemperatureC.Should().Be(temperature);
     }
 
-    private static HttpClient CreateHttpClientWithResponse(WeatherForecast[] forecasts)
+    private static HttpClient CreateStreamingHttpClient(WeatherForecast[] forecasts)
     {
         var json = JsonSerializer.Serialize(forecasts);
-        var handler = new MockHttpMessageHandler(HttpStatusCode.OK, json);
+        var handler = new MockStreamingHttpMessageHandler(json);
         var httpClient = new HttpClient(handler)
         {
             BaseAddress = new Uri("http://localhost")
         };
         return httpClient;
+    }
+
+    /// <summary>
+    /// Mock HTTP handler that streams JSON array items for testing streaming pagination.
+    /// </summary>
+    private class MockStreamingHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly string _json;
+
+        public MockStreamingHttpMessageHandler(string json)
+        {
+            _json = json;
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Return streaming JSON as-is; the client will parse it via GetFromJsonAsAsyncEnumerable
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(_json, System.Text.Encoding.UTF8, "application/json")
+            };
+
+            return await Task.FromResult(response);
+        }
     }
 
     private class MockHttpMessageHandler : HttpMessageHandler
