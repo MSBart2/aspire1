@@ -1,5 +1,6 @@
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.FeatureManagement;
 using System.Net;
 using System.Text.Json;
@@ -92,7 +93,10 @@ public class OutputCacheFeatureFlagTests : BunitContext
         var json = JsonSerializer.Serialize(forecasts);
         var handler = new FakeHttpMessageHandler(json);
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
-        return new WeatherApiClient(httpClient);
+        var logger = LoggerFactory
+            .Create(builder => builder.AddConsole())
+            .CreateLogger<WeatherApiClient>();
+        return new WeatherApiClient(httpClient, logger);
     }
 
     private sealed class FakeHttpMessageHandler(string content) : HttpMessageHandler
