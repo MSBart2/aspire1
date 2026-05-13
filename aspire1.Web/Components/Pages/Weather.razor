@@ -20,6 +20,13 @@ else if (forecasts == null)
 {
     <p data-testid="weather-loading"><em>Loading...</em></p>
 }
+else if (forecasts.Length == 0)
+{
+    <div class="alert alert-info">
+        <h4>ℹ️ Data Unavailable</h4>
+        <p>Weather data is temporarily unavailable. Please try again in a moment.</p>
+    </div>
+}
 else
 {
     <div class="row" role="list">
