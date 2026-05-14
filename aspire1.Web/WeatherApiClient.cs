@@ -38,7 +38,7 @@ public class WeatherApiClient(HttpClient httpClient, ILogger<WeatherApiClient> l
 
         try
         {
-            using var response = await httpClient.GetAsync("/weatherforecast", cancellationToken);
+            using var response = await httpClient.GetAsync("/weatherforecast", HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
             if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
             {
@@ -49,10 +49,10 @@ public class WeatherApiClient(HttpClient httpClient, ILogger<WeatherApiClient> l
 
             response.EnsureSuccessStatusCode();
 
-            // Stream JSON asynchronously with early exit on maxItems limit
+            // Stream JSON from the single response to avoid a second HTTP round-trip
             List<WeatherForecast>? forecasts = null;
 
-            await foreach (var forecast in httpClient.GetFromJsonAsAsyncEnumerable<WeatherForecast>("/weatherforecast", cancellationToken))
+            await foreach (var forecast in response.Content.ReadFromJsonAsAsyncEnumerable<WeatherForecast>(cancellationToken: cancellationToken))
             {
                 if (forecasts?.Count >= maxItems)
                 {
