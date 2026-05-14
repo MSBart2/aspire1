@@ -397,6 +397,8 @@ public record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary, 
 }
 ```
 
+> **Note:** `WeatherForecast` is defined in `aspire1.Contracts` and referenced here via `<ProjectReference>`. Do not redefine this record locally — any schema change must be made in `aspire1.Contracts` to enforce compile-time consistency across both the API and the frontend.
+
 ## 🎨 Layout & Styling
 
 ### MainLayout.razor

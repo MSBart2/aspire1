@@ -1,3 +1,4 @@
+using aspire1.Contracts;
 using Microsoft.Extensions.Caching.Distributed;
 using System.Text.Json;
 
@@ -82,9 +83,4 @@ public class CachedWeatherService
             ))
             .ToArray();
     }
-}
-
-public record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary, int Humidity)
-{
-    public int TemperatureF => (int)Math.Round(TemperatureC * 1.8 + 32);
 }

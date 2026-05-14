@@ -403,6 +403,20 @@ az appconfig feature list
 
 ## 💾 Redis Caching with CachedWeatherService
 
+### Shared DTO Contract
+
+`WeatherForecast` is defined in `aspire1.Contracts` and referenced by both `aspire1.WeatherService` and `aspire1.Web` via `<ProjectReference>`. Any change to the record's fields, types, or constructor signature is a compile-time error in both projects — no silent deserialization drift possible.
+
+```csharp
+// From aspire1.Contracts/WeatherForecast.cs
+namespace aspire1.Contracts;
+
+public record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary, int Humidity)
+{
+    public int TemperatureF => (int)Math.Round(TemperatureC * 1.8 + 32);
+}
+```
+
 ### Architecture
 
 The `CachedWeatherService` class provides Redis-backed distributed caching with graceful fallback:

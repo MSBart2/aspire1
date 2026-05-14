@@ -1,3 +1,4 @@
+using aspire1.Contracts;
 using Microsoft.Extensions.Logging;
 
 namespace aspire1.Web;
@@ -86,9 +87,4 @@ public class WeatherApiClient(HttpClient httpClient, ILogger<WeatherApiClient> l
                 new KeyValuePair<string, object?>("success", success ? SuccessTrue : SuccessFalse));
         }
     }
-}
-
-public record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary, int Humidity)
-{
-    public int TemperatureF => (int)Math.Round(TemperatureC * 1.8 + 32);
 }
