@@ -57,8 +57,9 @@ graph TB
 
 | Component                         | Type          | Port(s)          | Dependencies                | Health Endpoint               | Container Image                     |
 | --------------------------------- | ------------- | ---------------- | --------------------------- | ----------------------------- | ----------------------------------- |
-| **aspire1.Web**                   | Blazor Server | 8080, 8443       | aspire1.WeatherService      | `/health`                     | `aspire1-web:{version}`             |
-| **aspire1.WeatherService**        | Minimal API   | 8080, 8443       | aspire1.ServiceDefaults, Redis, Azure App Config | `/health`, `/health/detailed` | `aspire1-weatherservice:{version}` |
+| **aspire1.Web**                   | Blazor Server | 8080, 8443       | aspire1.WeatherService, aspire1.Contracts | `/health`        | `aspire1-web:{version}`             |
+| **aspire1.WeatherService**        | Minimal API   | 8080, 8443       | aspire1.ServiceDefaults, aspire1.Contracts, Redis, Azure App Config | `/health`, `/health/detailed` | `aspire1-weatherservice:{version}` |
+| **aspire1.Contracts**             | Class Library | N/A              | -                           | N/A                           | N/A                                 |
 | **aspire1.ServiceDefaults**       | Class Library | N/A              | -                           | N/A                           | N/A                                 |
 | **aspire1.AppHost**               | Orchestrator  | 5000 (dashboard) | All projects                | N/A                           | N/A                                 |
 | **aspire1.Web.Tests**             | Test Project  | N/A              | aspire1.Web                 | N/A                           | N/A                                 |
@@ -129,6 +130,10 @@ aspire1/
 │   ├── AppHost.cs                    # Defines service topology
 │   ├── appsettings.json              # Environment-agnostic config
 │   └── ARCHITECTURE.md               # AppHost-specific architecture
+│
+├── aspire1.Contracts/                # Shared DTOs (API contract library)
+│   ├── WeatherForecast.cs            # Canonical WeatherForecast record
+│   └── ARCHITECTURE.md               # Contracts library architecture
 │
 ├── aspire1.WeatherService/           # Backend REST API
 │   ├── Program.cs                    # API endpoints & middleware
@@ -739,6 +744,7 @@ npm test  # Auto-starts services, runs 31 tests, cleans up
 graph TB
     AppHost[aspire1.AppHost]
     ServiceDefaults[aspire1.ServiceDefaults]
+    Contracts[aspire1.Contracts]
     WeatherService[aspire1.WeatherService]
     Web[aspire1.Web]
     WeatherServiceTests[aspire1.WeatherService.Tests]
@@ -747,12 +753,15 @@ graph TB
     AppHost --> WeatherService
     AppHost --> Web
     WeatherService --> ServiceDefaults
+    WeatherService --> Contracts
     Web --> ServiceDefaults
+    Web --> Contracts
     Web --> WeatherService
     WeatherServiceTests --> WeatherService
     WebTests --> Web
     
     style ServiceDefaults fill:#ff6b6b,color:#fff
+    style Contracts fill:#9b59b6,color:#fff
     style AppHost fill:#ffd700
 ```
 
@@ -786,6 +795,7 @@ These files/paths can be modified without breaking other parts of the applicatio
 
 | File/Path | What It Controls | What Else Needs Updating |
 | --- | --- | --- |
+| `aspire1.Contracts/WeatherForecast.cs` | Shared DTO schema | Build will enforce changes in WeatherService and Web; update tests and serialization accordingly |
 | `aspire1.ServiceDefaults/Extensions.cs` | OpenTelemetry, health checks, resilience | All services depend on this; test thoroughly |
 | `aspire1.ServiceDefaults/ApplicationMetrics.cs` | Custom metric definitions | Update both WeatherService and Web if metrics change |
 | `aspire1.AppHost/AppHost.cs` | Service registration and references | Update if service names or dependencies change |
@@ -802,7 +812,7 @@ These files/paths can be modified without breaking other parts of the applicatio
 | --- | --- | --- |
 | **Service name in AppHost** (e.g., "weatherservice") | `WeatherApiClient` can't resolve service | Keep service names stable; coordinate with all consumers |
 | **Endpoint paths** in `WeatherService/Program.cs` | `WeatherApiClient` 404 errors | Version endpoints (e.g., `/v1/weatherforecast`) or coordinate deployment |
-| **WeatherForecast record structure** | JSON serialization fails between services | Use API versioning; add fields without removing old ones |
+| **WeatherForecast record structure** | JSON serialization fails between services | Defined in `aspire1.Contracts` — any change is a compile-time error in both WeatherService and Web |
 | **ServiceDefaults health check tags** | Container Apps health probes fail | Test health endpoints after changes |
 | **OpenTelemetry meter name** | Metrics disappear from Application Insights | Coordinate with monitoring team before changing |
 | **Redis cache key format** | Cache misses (not breaking, but performance hit) | Use versioned cache keys |
@@ -821,10 +831,11 @@ These files/paths can be modified without breaking other parts of the applicatio
 - **Used by**: `WeatherApiClient.GetWeatherAsync()`
 - **Impact**: 404 errors if paths change
 
-#### 3. Data Transfer Objects
-- **Type**: `WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)`
-- **Used by**: Both WeatherService and Web (deserialization)
-- **Impact**: JSON deserialization fails if structure changes
+#### 3. Data Transfer Objects (Shared Contract)
+- **Project**: `aspire1.Contracts` — the single source of truth for all shared DTOs
+- **Type**: `WeatherForecast(DateOnly Date, int TemperatureC, string? Summary, int Humidity)`
+- **Used by**: Both WeatherService (serialization) and Web (deserialization) via `<ProjectReference>`
+- **Impact**: Any field change is a **compile-time error** in both consumers — silent deserialization drift is impossible
 
 #### 4. ServiceDefaults API
 - **Methods**: `AddServiceDefaults()`, `MapDefaultEndpoints()`, `ConfigureOpenTelemetry()`

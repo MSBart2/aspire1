@@ -1,3 +1,4 @@
+using aspire1.Contracts;
 using Microsoft.Extensions.Logging;
 
 namespace aspire1.Web;
@@ -37,7 +38,7 @@ public class WeatherApiClient(HttpClient httpClient, ILogger<WeatherApiClient> l
 
         try
         {
-            using var response = await httpClient.GetAsync("/weatherforecast", cancellationToken);
+            using var response = await httpClient.GetAsync("/weatherforecast", HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
             if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
             {
@@ -48,10 +49,10 @@ public class WeatherApiClient(HttpClient httpClient, ILogger<WeatherApiClient> l
 
             response.EnsureSuccessStatusCode();
 
-            // Stream JSON asynchronously with early exit on maxItems limit
+            // Stream JSON from the single response to avoid a second HTTP round-trip
             List<WeatherForecast>? forecasts = null;
 
-            await foreach (var forecast in httpClient.GetFromJsonAsAsyncEnumerable<WeatherForecast>("/weatherforecast", cancellationToken))
+            await foreach (var forecast in response.Content.ReadFromJsonAsAsyncEnumerable<WeatherForecast>(cancellationToken: cancellationToken))
             {
                 if (forecasts?.Count >= maxItems)
                 {
@@ -86,9 +87,4 @@ public class WeatherApiClient(HttpClient httpClient, ILogger<WeatherApiClient> l
                 new KeyValuePair<string, object?>("success", success ? SuccessTrue : SuccessFalse));
         }
     }
-}
-
-public record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary, int Humidity)
-{
-    public int TemperatureF => (int)Math.Round(TemperatureC * 1.8 + 32);
 }

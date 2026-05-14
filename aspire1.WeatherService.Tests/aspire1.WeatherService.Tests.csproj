@@ -25,6 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\aspire1.Contracts\aspire1.Contracts.csproj" />
     <ProjectReference Include="..\aspire1.WeatherService\aspire1.WeatherService.csproj" />
   </ItemGroup>
 

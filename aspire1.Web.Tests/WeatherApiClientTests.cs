@@ -1,3 +1,4 @@
+using aspire1.Contracts;
 using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -148,7 +149,7 @@ public class WeatherApiClientTests
     }
 
     [Fact]
-    public void GetWeatherAsync_InvalidMaxItems_ThrowsArgumentOutOfRangeException()
+    public async Task GetWeatherAsync_InvalidMaxItems_ThrowsArgumentOutOfRangeException()
     {
         // Arrange
         var httpClient = new HttpClient(new MockHttpMessageHandler(HttpStatusCode.OK, "[]"))
@@ -162,9 +163,9 @@ public class WeatherApiClientTests
         var actNegative = async () => await client.GetWeatherAsync(maxItems: -5);
         var actTooLarge = async () => await client.GetWeatherAsync(maxItems: 1001);
 
-        actZero.Should().ThrowAsync<ArgumentOutOfRangeException>();
-        actNegative.Should().ThrowAsync<ArgumentOutOfRangeException>();
-        actTooLarge.Should().ThrowAsync<ArgumentOutOfRangeException>();
+        await actZero.Should().ThrowAsync<ArgumentOutOfRangeException>();
+        await actNegative.Should().ThrowAsync<ArgumentOutOfRangeException>();
+        await actTooLarge.Should().ThrowAsync<ArgumentOutOfRangeException>();
     }
 
     [Fact]
@@ -250,7 +251,7 @@ public class WeatherApiClientTests
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Return streaming JSON as-is; the client will parse it via GetFromJsonAsAsyncEnumerable
+            // Return streaming JSON as-is; the client reads it via response.Content.ReadFromJsonAsAsyncEnumerable
             var response = new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(_json, System.Text.Encoding.UTF8, "application/json")

@@ -1,3 +1,4 @@
+using aspire1.Contracts;
 using aspire1.WeatherService.Services;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;

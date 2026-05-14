@@ -309,28 +309,95 @@ builder.Services.AddHttpClient<WeatherApiClient>(client =>
 - **Resilience:** Automatic retry, circuit breaker, timeout (from ServiceDefaults)
 - **Scheme Preference:** Fallback to localhost for standalone debugging
 - **Instrumentation:** All HTTP calls traced via OpenTelemetry
+- **Graceful Degradation:** Returns empty array on 503 or network errors instead of throwing
+  - Allows UI to show friendly "no data" state when API is unavailable
+  - Handles race condition where frontend and backend have mismatched feature flag states
+- **Streaming Pagination:** Memory-efficient with early exit when `maxItems` limit reached
+- **Comprehensive Logging:** Logs all error scenarios for observability
 
 **Implementation:**
 
 ```csharp
-public class WeatherApiClient(HttpClient httpClient)
+public class WeatherApiClient(HttpClient httpClient, ILogger<WeatherApiClient> logger)
 {
+    private const string SuccessTrue = "true";
+    private const string SuccessFalse = "false";
+    private const int MaxItemsLimit = 1000;
+
     public async Task<WeatherForecast[]> GetWeatherAsync(
         int maxItems = 10,
         CancellationToken cancellationToken = default)
     {
-        // Calls: https://weatherservice:8443/weatherforecast?maxItems=10
-        return await httpClient.GetFromJsonAsync<WeatherForecast[]>(
-            $"/weatherforecast?maxItems={maxItems}",
-            cancellationToken);
+        // Validate input: maxItems must be 1-1000
+        if (maxItems <= 0 || maxItems > MaxItemsLimit)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxItems), 
+                $"maxItems must be between 1 and {MaxItemsLimit}");
+        }
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var success = false;
+
+        try
+        {
+            // Check for 503 (feature disabled on API side)
+            using var response = await httpClient.GetAsync("/weatherforecast", cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+            {
+                logger.LogInformation("Weather API returned 503 (feature flag disabled). " +
+                    "Returning empty forecasts for graceful degradation.");
+                return Array.Empty<WeatherForecast>();
+            }
+
+            response.EnsureSuccessStatusCode();
+
+            // Stream JSON asynchronously for memory efficiency
+            List<WeatherForecast>? forecasts = null;
+
+            await foreach (var forecast in httpClient
+                .GetFromJsonAsAsyncEnumerable<WeatherForecast>("/weatherforecast", cancellationToken))
+            {
+                // Early exit when maxItems limit reached
+                if (forecasts?.Count >= maxItems)
+                    break;
+
+                if (forecast is not null)
+                {
+                    forecasts ??= [];
+                    forecasts.Add(forecast);
+                }
+            }
+
+            success = true;
+            return forecasts?.ToArray() ?? [];
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogWarning(ex, "Weather API request failed (network error or non-success status). " +
+                "Returning empty forecasts for graceful degradation.");
+            return Array.Empty<WeatherForecast>();
+        }
+        finally
+        {
+            stopwatch.Stop();
+            // Track API call duration with success status for observability
+            ApplicationMetrics.ApiCallDuration.Record(
+                stopwatch.ElapsedMilliseconds,
+                new KeyValuePair<string, object?>("endpoint", "weatherforecast"),
+                new KeyValuePair<string, object?>("success", success ? SuccessTrue : SuccessFalse));
+        }
     }
 }
 
 public record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary, int Humidity)
 {
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+    // Rounds instead of truncates for accurate temperature conversion
+    public int TemperatureF => (int)Math.Round(TemperatureC * 1.8 + 32);
 }
 ```
+
+> **Note:** `WeatherForecast` is defined in `aspire1.Contracts` and referenced here via `<ProjectReference>`. Do not redefine this record locally — any schema change must be made in `aspire1.Contracts` to enforce compile-time consistency across both the API and the frontend.
 
 ## 🎨 Layout & Styling
 
