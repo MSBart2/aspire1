@@ -66,6 +66,15 @@ public static class ApplicationMetrics
         description: "API call duration in milliseconds");
 
     /// <summary>
+    /// Tracks emoji reactions on weather forecast cards.
+    /// Tags: emoji, forecast_offset (day offset from today; low cardinality)
+    /// </summary>
+    public static readonly Counter<long> WeatherReactions = Meter.CreateCounter<long>(
+        "weather.reactions",
+        unit: "reactions",
+        description: "Number of emoji reactions submitted on weather forecast cards");
+
+    /// <summary>
     /// Helper method to categorize count into ranges for reduced cardinality.
     /// </summary>
     /// <param name="count">The current count value</param>
