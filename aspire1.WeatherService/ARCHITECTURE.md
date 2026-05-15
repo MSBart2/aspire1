@@ -177,13 +177,17 @@ ApplicationMetrics.CacheMisses.Add(1,
 
 ### `GET /health/detailed`
 
-**Purpose:** Enhanced health check with version metadata and feature flag status for OpenTelemetry correlation
+**Purpose:** Enhanced health check that queries actual dependency status (Redis, App Config) with version metadata and feature flag status for OpenTelemetry correlation
 
 **Feature Flag:**
 - Controlled by `DetailedHealth` feature flag in Azure App Configuration
 - Returns minimal health info if feature is disabled
 
-**Response (when DetailedHealth enabled):**
+**Dependency Health Checks:**
+- **redis**: Azure Cache for Redis connectivity (status, duration)
+- **app-config**: Azure App Configuration endpoint accessibility (status, duration)
+
+**Response (when DetailedHealth enabled, all dependencies healthy):**
 
 ```json
 {
@@ -196,6 +200,33 @@ ApplicationMetrics.CacheMisses.Add(1,
   "features": {
     "detailedHealth": true,
     "weatherForecast": true
+  },
+  "dependencies": {
+    "redis": {
+      "status": "healthy",
+      "duration": 5.234,
+      "description": "Connection successful"
+    },
+    "app-config": {
+      "status": "healthy",
+      "duration": 12.456,
+      "description": "Endpoint responding"
+    }
+  }
+}
+```
+
+**Response (when dependencies are degraded):**
+
+```json
+{
+  "status": "degraded",
+  "dependencies": {
+    "redis": {
+      "status": "unhealthy",
+      "duration": 5001.234,
+      "description": "Connection timeout"
+    }
   }
 }
 ```
@@ -210,7 +241,9 @@ ApplicationMetrics.CacheMisses.Add(1,
 
 **Use Cases:**
 
-- Debugging distributed traces (find which version produced a span)
+- Detecting when Redis or App Config is unreachable (vs assuming all is well)
+- Container Apps readiness probes — will mark pod as unhealthy if dependencies fail
+- Debugging distributed traces (find which version produced a span, confirm dependencies were healthy)
 - Uptime monitoring (seconds since container start)
 - Service mesh health dashboards
 
@@ -832,36 +865,54 @@ var commitSha = builder.Configuration["COMMIT_SHA"] ??
 
 ### 2. Health Check Endpoints
 
-#### ❌ BAD: No version metadata
+#### ❌ BAD: Always reports "healthy" without checking dependencies
 
 ```csharp
-app.MapGet("/health", () => "Healthy");
-```
-
-**Why it's bad:** Can't correlate issues with deployed version, no uptime tracking, minimal diagnostics
-
-#### ✅ GOOD: Enhanced health with version (Current implementation)
-
-```csharp
-app.MapGet("/health/detailed", () => new
+app.MapGet("/health/detailed", async (IFeatureManager featureManager) =>
 {
-    status = "healthy",
-    version,
-    commitSha,
-var version = builder.Configuration["APP_VERSION"] ??
-              Assembly.GetExecutingAssembly()
-                      .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
-                      ?.InformationalVersion ?? "unknown";
-var commitSha = builder.Configuration["COMMIT_SHA"] ??
-                Environment.GetEnvironmentVariable("GITHUB_SHA")?[..7] ?? "local";
-```
-    timestamp = DateTime.UtcNow,
-    uptime = Environment.TickCount64 / 1000.0
+    // Never actually checks Redis or App Config status
+    return Results.Ok(new { status = "healthy" });
 })
 .WithName("GetDetailedHealth");
 ```
 
-**Why it's good:** OpenTelemetry correlation, deployment tracking, uptime monitoring, troubleshooting context
+**Why it's bad:** Container Apps think service is healthy when Redis is down, false confidence in monitoring, incidents go dark
+
+#### ✅ GOOD: Query HealthCheckService for actual dependency status (Current implementation)
+
+```csharp
+app.MapGet("/health/detailed", async (IFeatureManager featureManager, HealthCheckService healthCheckService) =>
+{
+    var showDetailed = await featureManager.IsEnabledAsync("DetailedHealth");
+    var healthReport = await healthCheckService.CheckHealthAsync();
+
+    if (showDetailed)
+    {
+        return Results.Ok(new
+        {
+            status = healthReport.Status.ToString().ToLowerInvariant(),
+            version,
+            commitSha,
+            timestamp = DateTime.UtcNow,
+            uptime = Environment.TickCount64 / 1000.0,
+            dependencies = healthReport.Entries.ToDictionary(
+                kvp => kvp.Key,
+                kvp => new
+                {
+                    status = kvp.Value.Status.ToString().ToLowerInvariant(),
+                    duration = kvp.Value.Duration.TotalMilliseconds,
+                    description = kvp.Value.Description
+                }
+            )
+        });
+    }
+
+    return Results.Ok(new { status = healthReport.Status.ToString().ToLowerInvariant() });
+})
+.WithName("GetDetailedHealth");
+```
+
+**Why it's good:** Real dependency health detection, Container Apps readiness probes fail when dependencies go down, monitoring has teeth, incidents are visible
 
 ---
 

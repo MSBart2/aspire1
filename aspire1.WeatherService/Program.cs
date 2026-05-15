@@ -2,6 +2,7 @@ using System.Reflection;
 using aspire1.WeatherService.Services;
 using Azure.Identity;
 using Microsoft.Extensions.Configuration.AzureAppConfiguration;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.FeatureManagement;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -69,6 +70,31 @@ builder.Services.AddProblemDetails();
 
 // Register cached weather service
 builder.Services.AddScoped<CachedWeatherService>();
+
+// Register health checks for dependencies
+var healthChecks = builder.Services.AddHealthChecks();
+
+// Add Redis health check if configured
+if (!string.IsNullOrEmpty(redisConnectionName))
+{
+    try
+    {
+        healthChecks.AddRedis(redisConnectionName, name: "redis", tags: ["ready"]);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"⚠️  Warning: Could not register Redis health check: {ex.Message}");
+    }
+}
+
+// Register named HttpClient for AppConfigHealthCheck (5-second timeout, no socket exhaustion)
+builder.Services.AddHttpClient("appconfig-health", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
+// Register App Config health check
+healthChecks.AddCheck<AppConfigHealthCheck>("app-config", tags: ["ready"]);
 
 // Capture version info at startup
 var version = builder.Configuration["APP_VERSION"] ??
@@ -148,15 +174,16 @@ app.MapGet("/version", () => new
 .WithName("GetVersion");
 
 // Enhanced health with version for OpenTelemetry correlation
-app.MapGet("/health/detailed", async (IFeatureManager featureManager) =>
+app.MapGet("/health/detailed", async (IFeatureManager featureManager, HealthCheckService healthCheckService) =>
 {
     var showDetailed = await featureManager.IsEnabledAsync("DetailedHealth");
+    var healthReport = await healthCheckService.CheckHealthAsync();
 
     if (showDetailed)
     {
         return Results.Ok(new
         {
-            status = "healthy",
+            status = healthReport.Status.ToString().ToLowerInvariant(),
             version,
             commitSha,
             service = "apiservice",
@@ -166,11 +193,20 @@ app.MapGet("/health/detailed", async (IFeatureManager featureManager) =>
             {
                 detailedHealth = true,
                 weatherForecast = await featureManager.IsEnabledAsync("WeatherForecast")
-            }
+            },
+            dependencies = healthReport.Entries.ToDictionary(
+                kvp => kvp.Key,
+                kvp => new
+                {
+                    status = kvp.Value.Status.ToString().ToLowerInvariant(),
+                    duration = kvp.Value.Duration.TotalMilliseconds,
+                    description = kvp.Value.Description
+                }
+            )
         });
     }
 
-    return Results.Ok(new { status = "healthy" });
+    return Results.Ok(new { status = healthReport.Status.ToString().ToLowerInvariant() });
 })
 .WithName("GetDetailedHealth");
 app.MapDefaultEndpoints();
