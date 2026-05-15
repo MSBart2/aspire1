@@ -240,6 +240,93 @@ This approach is more efficient than checking the feature flag in each card inst
 
 ---
 
+### WeatherCard Animations
+
+**Purpose:** Dynamically animate weather cards with CSS-based animations that reflect the current forecast temperature range
+
+**Temperature-to-Animation Mapping:**
+
+| Temperature Range | CSS Class | Animation | Decorative Emojis | Colors |
+|---|---|---|---|---|
+| < 0°C | `.weather-card--freezing` | ❄️ Falling snowflakes (4s linear) | ❄️ | Ice blue (#B4DCFF), white |
+| 0–15°C | `.weather-card--chilly` | 🌧️ Gentle rain droplets (3s ease-in-out) | 🌧️ | Slate gray (#A9A9A9), soft blue (#C0C0C0) |
+| 16–25°C | `.weather-card--mild` | ☀️ Floating sun and clouds (5s/6s ease-in-out) | ☀️☁️ | Sky blue (#87CEEB), gold (#FFD700) |
+| 26–40°C | `.weather-card--hot` | 🔥 Heat shimmer waves (2s ease-in-out) | 🔥 | Orange (#FFA500), amber (#FF8000) |
+| > 40°C | `.weather-card--scorching` | 🌋 Intense distortion (1.5s cubic-bezier) | 🌋 | Deep red (#DC143C), fire |
+
+**Implementation Details:**
+
+- **Temperature Detection:** `GetTemperatureClass()` method in `WeatherCard.razor` uses a C# switch expression to map temperature values to CSS class names
+- **CSS Classes:** Defined in `app.css` with pure CSS animations using `@keyframes`
+- **Decorative Elements:** Emoji content added via CSS `::before` and `::after` pseudo-elements (accessible, no screen reader interference)
+- **Position:** Absolute positioning with `z-index: 1` prevents layout shift
+- **Animation Speed:** Optimized for 60fps smooth rendering using `transform` and `opacity` properties
+- **Accessibility:** `@media (prefers-reduced-motion: reduce)` disables animations for users with accessibility preferences, sets opacity to 0.3
+
+**CSS Implementation Pattern:**
+
+```css
+.weather-card--freezing {
+    background: linear-gradient(135deg, rgba(180, 220, 255, 0.1), rgba(200, 240, 255, 0.1)) !important;
+    border: 1px solid rgba(173, 216, 230, 0.3);
+}
+
+.weather-card--freezing::before {
+    content: '❄️';
+    position: absolute;
+    top: 10px;
+    left: 15px;
+    font-size: 2rem;
+    opacity: 0.6;
+    animation: snowfall 4s linear infinite;
+    pointer-events: none;
+    z-index: 1;
+}
+
+@keyframes snowfall {
+    0% {
+        transform: translateY(-20px) rotate(0deg);
+        opacity: 0.8;
+    }
+    100% {
+        transform: translateY(100%) rotate(360deg);
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .weather-card--freezing::before {
+        animation: none !important;
+        opacity: 0.3 !important;
+    }
+}
+```
+
+**C# Temperature Logic:**
+
+```csharp
+private string GetTemperatureClass(int temperatureC) =>
+    temperatureC switch
+    {
+        < 0 => "weather-card--freezing",
+        >= 0 and < 16 => "weather-card--chilly",
+        >= 16 and < 26 => "weather-card--mild",
+        >= 26 and <= 40 => "weather-card--hot",
+        > 40 => "weather-card--scorching",
+        _ => string.Empty
+    };
+```
+
+**Key Design Decisions:**
+
+- **Pure CSS:** Zero JavaScript overhead; native browser rendering at 60fps
+- **Emoji Decorations:** Instant visual storytelling, accessible, no image assets required
+- **Absolute Positioning:** Prevents content layout shift, clear z-index stacking
+- **Accessibility-First:** `prefers-reduced-motion` respected; animations gracefully degrade
+- **No Feature Flag (Yet):** Animations are non-intrusive and negligible performance impact — future enhancement opportunity if user preference becomes a requirement
+
+---
+
 ### `/featuredemo` - FeatureDemo.razor
 
 **Purpose:** Demonstrate feature flag integration with Azure App Configuration

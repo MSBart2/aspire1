@@ -1,6 +1,6 @@
 @if (Forecast != null)
 {
-    <div class="card weather-card mb-3" role="article" data-testid="weather-card">
+    <div class="card weather-card @GetTemperatureClass(Forecast.TemperatureC) mb-3" role="article" data-testid="weather-card">
         <div class="card-header bg-primary text-white">
             <h5 class="card-title mb-0" data-testid="weather-date">@Forecast.Date.ToString("dddd, MMMM d")</h5>
         </div>
@@ -36,4 +36,14 @@
 
     [Parameter]
     public bool ShowHumidity { get; set; }
+
+    private string GetTemperatureClass(int temperatureC) =>
+        temperatureC switch
+        {
+            < 0 => "weather-card--freezing",
+            >= 0 and < 16 => "weather-card--chilly",
+            >= 16 and < 26 => "weather-card--mild",
+            >= 26 and <= 40 => "weather-card--hot",
+            _ => "weather-card--scorching"
+        };
 }
