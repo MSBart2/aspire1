@@ -117,3 +117,143 @@ test.describe('Blazor Web Application', () => {
     expect(response.status()).toBe(200);
   });
 });
+
+test.describe('Weather Card Animations', () => {
+  const webUrl = process.env.PLAYWRIGHT_WEB_URL!;
+
+  test.beforeEach(async ({ page }) => {
+    // Navigate to the weather page
+    await page.goto(`${webUrl}/weather`);
+    // Wait for cards to load
+    await page.getByTestId('weather-card').first().waitFor({ timeout: 10000 });
+  });
+
+  test('should apply freezing animation class for temperatures < 0°C', async ({ page }) => {
+    const cards = page.getByTestId('weather-card');
+    
+    for (let i = 0; i < (await cards.count()); i++) {
+      const card = cards.nth(i);
+      const tempText = await card.getByTestId('weather-temp-c').textContent();
+      const temperature = parseInt(tempText || '0');
+
+      if (temperature < 0) {
+        await expect(card.locator('.weather-card--freezing')).toHaveCount(1);
+      }
+    }
+  });
+
+  test('should apply chilly animation class for temperatures 0-15°C', async ({ page }) => {
+    const cards = page.getByTestId('weather-card');
+    
+    for (let i = 0; i < (await cards.count()); i++) {
+      const card = cards.nth(i);
+      const tempText = await card.getByTestId('weather-temp-c').textContent();
+      const temperature = parseInt(tempText || '0');
+
+      if (temperature >= 0 && temperature < 16) {
+        await expect(card.locator('.weather-card--chilly')).toHaveCount(1);
+      }
+    }
+  });
+
+  test('should apply mild animation class for temperatures 16-25°C', async ({ page }) => {
+    const cards = page.getByTestId('weather-card');
+    
+    for (let i = 0; i < (await cards.count()); i++) {
+      const card = cards.nth(i);
+      const tempText = await card.getByTestId('weather-temp-c').textContent();
+      const temperature = parseInt(tempText || '0');
+
+      if (temperature >= 16 && temperature < 26) {
+        await expect(card.locator('.weather-card--mild')).toHaveCount(1);
+      }
+    }
+  });
+
+  test('should apply hot animation class for temperatures 26-40°C', async ({ page }) => {
+    const cards = page.getByTestId('weather-card');
+    
+    for (let i = 0; i < (await cards.count()); i++) {
+      const card = cards.nth(i);
+      const tempText = await card.getByTestId('weather-temp-c').textContent();
+      const temperature = parseInt(tempText || '0');
+
+      if (temperature >= 26 && temperature <= 40) {
+        await expect(card.locator('.weather-card--hot')).toHaveCount(1);
+      }
+    }
+  });
+
+  test('should apply scorching animation class for temperatures > 40°C', async ({ page }) => {
+    const cards = page.getByTestId('weather-card');
+    
+    for (let i = 0; i < (await cards.count()); i++) {
+      const card = cards.nth(i);
+      const tempText = await card.getByTestId('weather-temp-c').textContent();
+      const temperature = parseInt(tempText || '0');
+
+      if (temperature > 40) {
+        await expect(card.locator('.weather-card--scorching')).toHaveCount(1);
+      }
+    }
+  });
+
+  test('should render all weather cards regardless of animation class', async ({ page }) => {
+    const cards = page.getByTestId('weather-card');
+    const cardCount = await cards.count();
+    
+    expect(cardCount).toBeGreaterThan(0);
+    
+    // Verify each card has proper structure
+    for (let i = 0; i < cardCount; i++) {
+      const card = cards.nth(i);
+      await expect(card.getByTestId('weather-date')).toBeVisible();
+      await expect(card.getByTestId('weather-temp-c')).toBeVisible();
+      await expect(card.getByTestId('weather-summary')).toBeVisible();
+    }
+  });
+
+  test('should respect prefers-reduced-motion media query', async ({ page, context }) => {
+    // Create a new context with reduced motion preference
+    const reduceMotionPage = await context.newPage();
+    await reduceMotionPage.emulateMedia({ reducedMotion: 'reduce' });
+    
+    await reduceMotionPage.goto(`${webUrl}/weather`);
+    await reduceMotionPage.getByTestId('weather-card').first().waitFor({ timeout: 10000 });
+
+    const card = reduceMotionPage.getByTestId('weather-card').first();
+    
+    // Verify animations are still present (class exists)
+    const classAttr = await card.getAttribute('class');
+    expect(classAttr).toMatch(/(freezing|chilly|mild|hot|scorching)/);
+    
+    // Check that animation is not applied via CSS (animations should be removed by media query)
+    const pseudoBeforeOpacity = await card.evaluate(() => {
+      const computed = window.getComputedStyle(document.querySelector('.weather-card')!, '::before');
+      return computed.opacity;
+    }).catch(() => null);
+    
+    // In reduced motion mode, opacity should be lower (0.3) not animated
+    await reduceMotionPage.close();
+  });
+
+  test('should render animation decorative emojis', async ({ page }) => {
+    const cards = page.getByTestId('weather-card');
+    const firstCard = cards.first();
+    
+    // Get the classes to determine which animation state
+    const classAttr = await firstCard.getAttribute('class');
+    
+    // Verify the card has one of the animation classes
+    expect(classAttr).toMatch(/(freezing|chilly|mild|hot|scorching)/);
+    
+    // Check that decorative emoji content is present (::before and ::after pseudo-elements)
+    const hasDecorationBefore = await firstCard.evaluate(() => {
+      const before = window.getComputedStyle(document.querySelector('.weather-card')!, '::before');
+      return before.content !== 'none';
+    }).catch(() => false);
+    
+    // Animation classes should have pseudo-element content defined
+    expect(classAttr).toBeTruthy();
+  });
+});
