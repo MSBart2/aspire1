@@ -5,33 +5,46 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using aspire1.WeatherService.Services;
 using Xunit;
+using System.Net;
+using NSubstitute;
 
 namespace aspire1.WeatherService.Tests;
 
 /// <summary>
-/// Tests for the /health/detailed endpoint and AppConfigHealthCheck service.
-/// Validates that the endpoint reports actual dependency health, not assumed "healthy".
+/// Tests for the /health/detailed endpoint behavior and AppConfigHealthCheck service.
+/// Validates that the endpoint reports actual dependency health — no more assumed "healthy".
 /// </summary>
 public class HealthCheckTests
 {
-    [Fact]
-    public async Task AppConfigHealthCheck_WithNullEndpoint_ReturnsHealthy()
+    // Creates AppConfigHealthCheck with a controlled HTTP response for unit testing.
+    private static AppConfigHealthCheck CreateHealthCheck(
+        string? endpoint,
+        HttpResponseMessage? response = null,
+        Exception? throwException = null)
     {
-        // Arrange
-        var configuration = new ConfigurationBuilder()
+        var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["AppConfig:Endpoint"] = null
+                ["AppConfig:Endpoint"] = endpoint
             })
             .Build();
 
-        var healthCheck = new AppConfigHealthCheck(configuration, NullLogger<AppConfigHealthCheck>.Instance);
-        var context = new HealthCheckContext();
+        var handler = new TestMessageHandler(response, throwException);
+        var httpClient = new HttpClient(handler);
 
-        // Act
-        var result = await healthCheck.CheckHealthAsync(context);
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("appconfig-health").Returns(httpClient);
 
-        // Assert
+        return new AppConfigHealthCheck(config, factory, NullLogger<AppConfigHealthCheck>.Instance);
+    }
+
+    [Fact]
+    public async Task AppConfigHealthCheck_WithNullEndpoint_ReturnsHealthy()
+    {
+        var healthCheck = CreateHealthCheck(null);
+
+        var result = await healthCheck.CheckHealthAsync(new HealthCheckContext());
+
         result.Status.Should().Be(HealthStatus.Healthy);
         result.Description.Should().Contain("offline mode");
     }
@@ -39,43 +52,61 @@ public class HealthCheckTests
     [Fact]
     public async Task AppConfigHealthCheck_WithEmptyEndpoint_ReturnsHealthy()
     {
-        // Arrange
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["AppConfig:Endpoint"] = ""
-            })
-            .Build();
+        var healthCheck = CreateHealthCheck("");
 
-        var healthCheck = new AppConfigHealthCheck(configuration, NullLogger<AppConfigHealthCheck>.Instance);
-        var context = new HealthCheckContext();
+        var result = await healthCheck.CheckHealthAsync(new HealthCheckContext());
 
-        // Act
-        var result = await healthCheck.CheckHealthAsync(context);
-
-        // Assert
         result.Status.Should().Be(HealthStatus.Healthy);
         result.Description.Should().Contain("offline mode");
     }
 
     [Fact]
-    public async Task AppConfigHealthCheck_WithUnreachableEndpoint_ReturnsUnhealthy()
+    public async Task AppConfigHealthCheck_With401Response_ReturnsHealthy()
     {
-        // Arrange
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["AppConfig:Endpoint"] = "https://invalid-endpoint-that-does-not-exist-12345.azconfig.io"
-            })
-            .Build();
+        // 401 from Azure App Config = service is up and correctly rejecting unauthenticated requests
+        var healthCheck = CreateHealthCheck(
+            "https://mystore.azconfig.io",
+            new HttpResponseMessage(HttpStatusCode.Unauthorized));
 
-        var healthCheck = new AppConfigHealthCheck(configuration, NullLogger<AppConfigHealthCheck>.Instance);
-        var context = new HealthCheckContext();
+        var result = await healthCheck.CheckHealthAsync(new HealthCheckContext());
 
-        // Act
-        var result = await healthCheck.CheckHealthAsync(context);
+        result.Status.Should().Be(HealthStatus.Healthy);
+        result.Description.Should().Contain("reachable");
+    }
 
-        // Assert
+    [Fact]
+    public async Task AppConfigHealthCheck_With200Response_ReturnsHealthy()
+    {
+        var healthCheck = CreateHealthCheck(
+            "https://mystore.azconfig.io",
+            new HttpResponseMessage(HttpStatusCode.OK));
+
+        var result = await healthCheck.CheckHealthAsync(new HealthCheckContext());
+
+        result.Status.Should().Be(HealthStatus.Healthy);
+    }
+
+    [Fact]
+    public async Task AppConfigHealthCheck_With500Response_ReturnsUnhealthy()
+    {
+        var healthCheck = CreateHealthCheck(
+            "https://mystore.azconfig.io",
+            new HttpResponseMessage(HttpStatusCode.InternalServerError));
+
+        var result = await healthCheck.CheckHealthAsync(new HealthCheckContext());
+
+        result.Status.Should().Be(HealthStatus.Unhealthy);
+    }
+
+    [Fact]
+    public async Task AppConfigHealthCheck_WithNetworkException_ReturnsUnhealthy()
+    {
+        var healthCheck = CreateHealthCheck(
+            "https://mystore.azconfig.io",
+            throwException: new HttpRequestException("Network unreachable"));
+
+        var result = await healthCheck.CheckHealthAsync(new HealthCheckContext());
+
         result.Status.Should().Be(HealthStatus.Unhealthy);
         result.Description.Should().Contain("unreachable");
     }
@@ -83,22 +114,13 @@ public class HealthCheckTests
     [Fact]
     public async Task AppConfigHealthCheck_WithTimeout_ReturnsUnhealthy()
     {
-        // Arrange
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                // Using httpbin.org/delay endpoint that will timeout on /health check
-                ["AppConfig:Endpoint"] = "https://httpbin.org/delay/10"
-            })
-            .Build();
+        // Simulates a timeout using a mocked handler — no external network calls
+        var healthCheck = CreateHealthCheck(
+            "https://mystore.azconfig.io",
+            throwException: new TaskCanceledException("Request timed out due to 5s timeout"));
 
-        var healthCheck = new AppConfigHealthCheck(configuration, NullLogger<AppConfigHealthCheck>.Instance);
-        var context = new HealthCheckContext();
+        var result = await healthCheck.CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
 
-        // Act
-        var result = await healthCheck.CheckHealthAsync(context, CancellationToken.None);
-
-        // Assert
         result.Status.Should().Be(HealthStatus.Unhealthy);
         result.Description.Should().Contain("timed out");
     }
@@ -106,8 +128,8 @@ public class HealthCheckTests
     [Fact]
     public async Task HealthCheckService_ReportsActualDependencyStatus()
     {
-        // Arrange
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddHealthChecks()
             .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"])
             .AddCheck("test-dependency", () => HealthCheckResult.Healthy(), ["ready"]);
@@ -115,10 +137,8 @@ public class HealthCheckTests
         var serviceProvider = services.BuildServiceProvider();
         var healthCheckService = serviceProvider.GetRequiredService<HealthCheckService>();
 
-        // Act
         var report = await healthCheckService.CheckHealthAsync();
 
-        // Assert
         report.Status.Should().Be(HealthStatus.Healthy);
         report.Entries.Should().ContainKey("self");
         report.Entries.Should().ContainKey("test-dependency");
@@ -127,8 +147,8 @@ public class HealthCheckTests
     [Fact]
     public async Task HealthCheckService_WithDegradedDependency_ReportsDegraded()
     {
-        // Arrange
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddHealthChecks()
             .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"])
             .AddCheck("degraded-dependency", () => HealthCheckResult.Degraded("Service is slow"), ["ready"]);
@@ -136,11 +156,32 @@ public class HealthCheckTests
         var serviceProvider = services.BuildServiceProvider();
         var healthCheckService = serviceProvider.GetRequiredService<HealthCheckService>();
 
-        // Act
         var report = await healthCheckService.CheckHealthAsync();
 
-        // Assert
         report.Status.Should().Be(HealthStatus.Degraded);
         report.Entries["degraded-dependency"].Status.Should().Be(HealthStatus.Degraded);
+    }
+
+    /// <summary>
+    /// Controlled HTTP message handler for unit testing — no real network calls.
+    /// </summary>
+    private sealed class TestMessageHandler : HttpMessageHandler
+    {
+        private readonly HttpResponseMessage? _response;
+        private readonly Exception? _exception;
+
+        public TestMessageHandler(HttpResponseMessage? response = null, Exception? exception = null)
+        {
+            _response = response;
+            _exception = exception;
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (_exception is not null) throw _exception;
+            return Task.FromResult(_response ?? new HttpResponseMessage(HttpStatusCode.OK));
+        }
     }
 }

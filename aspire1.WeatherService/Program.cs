@@ -87,6 +87,12 @@ if (!string.IsNullOrEmpty(redisConnectionName))
     }
 }
 
+// Register named HttpClient for AppConfigHealthCheck (5-second timeout, no socket exhaustion)
+builder.Services.AddHttpClient("appconfig-health", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 // Register App Config health check
 healthChecks.AddCheck<AppConfigHealthCheck>("app-config", tags: ["ready"]);
 
