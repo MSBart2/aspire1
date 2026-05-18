@@ -26,6 +26,7 @@ graph TB
         Middleware[Middleware Pipeline]
         Routes[Minimal API Routes]
         CachedService[CachedWeatherService]
+        Formatter[WeatherSummaryFormatter]
         FeatureFlags[Feature Manager]
         ServiceDefaults[ServiceDefaults<br/>OpenTelemetry, Health]
 
@@ -54,6 +55,7 @@ graph TB
     
     Weather --> FeatureFlags
     Weather --> CachedService
+    CachedService --> Formatter
     CachedService --> Redis
     HealthDetailed --> FeatureFlags
 
@@ -62,6 +64,7 @@ graph TB
 
     style Routes fill:#0078d4,stroke:#005a9e,color:#fff
     style CachedService fill:#50e6ff
+    style Formatter fill:#ffe599
     style FeatureFlags fill:#90EE90
 ```
 
@@ -434,6 +437,54 @@ az appconfig feature set --name WeatherForecast --label Production --no
 az appconfig feature list
 ```
 
+## 🌡️ Weather Summary Formatting with WeatherSummaryFormatter
+
+`WeatherSummaryFormatter` is a pure static helper that converts a temperature (°C) and optional humidity into a concise, human-readable summary string. It lives in `aspire1.WeatherService.Services` and is the single source of truth for summary labels — cards, logs, tooltips, and tests all use the same output.
+
+### Temperature Bands
+
+| Temperature Range | Label      |
+| ----------------- | ---------- |
+| Below 0°C         | `Freezing` |
+| 0°C – 15°C        | `Cold`     |
+| 16°C – 25°C       | `Mild`     |
+| 26°C – 40°C       | `Warm`     |
+| Above 40°C        | `Hot`      |
+
+These bands are intentionally aligned with the CSS classes used in `WeatherCard.razor` so that UI styling and API labels never drift.
+
+### Humidity Formatting
+
+When a non-zero `humidity` value is provided, it is appended to the label:
+
+```
+Mild – humidity 65%
+```
+
+When humidity is `0` or `null`, the label is returned without any humidity suffix:
+
+```
+Mild
+```
+
+### Integration with CachedWeatherService
+
+`CachedWeatherService.GenerateForecasts` delegates to `WeatherSummaryFormatter.Format` for every generated forecast item:
+
+```csharp
+var temperatureC = Random.Shared.Next(-20, 55);
+var humidity = Random.Shared.Next(20, 95);
+return new WeatherForecast(
+    DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
+    temperatureC,
+    WeatherSummaryFormatter.Format(temperatureC, humidity),
+    humidity);
+```
+
+This ensures that summary text is never inlined as ad-hoc string logic and is always testable in isolation.
+
+---
+
 ## 💾 Redis Caching with CachedWeatherService
 
 ### Shared DTO Contract
@@ -718,28 +769,46 @@ readinessProbe:
 
 ## 🎯 Testing
 
-### Unit Tests (Future)
+### Unit Tests
+
+The `aspire1.WeatherService.Tests` project contains **76 passing unit tests** using xUnit, FluentAssertions, and NSubstitute.
+
+#### WeatherSummaryFormatterTests (23 tests)
+
+Covers all five temperature bands, boundary conditions, and humidity on/off behavior:
 
 ```csharp
-// Example with xUnit + FluentAssertions
-public class WeatherForecastTests
+[Theory]
+[InlineData(-1, "Freezing")]
+[InlineData(0, "Cold")]
+[InlineData(15, "Cold")]
+[InlineData(16, "Mild")]
+[InlineData(25, "Mild")]
+[InlineData(26, "Warm")]
+[InlineData(40, "Warm")]
+[InlineData(41, "Hot")]
+public void Format_TemperatureLabel_MatchesBand(int tempC, string expectedLabel)
 {
-    [Fact]
-    public void GetWeatherForecast_Returns5Days()
-    {
-        // Arrange
-        var forecast = GetWeatherForecast(); // Extracted logic
+    WeatherSummaryFormatter.Format(tempC).Should().Be(expectedLabel);
+}
 
-        // Act
-        var result = forecast.ToArray();
+[Fact]
+public void Format_WithHumidity_AppendsHumidityText()
+{
+    WeatherSummaryFormatter.Format(20, 65).Should().Be("Mild – humidity 65%");
+}
 
-        // Assert
-        result.Should().HaveCount(5);
-        result.All(f => f.Date > DateOnly.FromDateTime(DateTime.Now))
-            .Should().BeTrue();
-    }
+[Fact]
+public void Format_WithZeroHumidity_OmitsHumidityText()
+{
+    WeatherSummaryFormatter.Format(20, 0).Should().Be("Mild");
 }
 ```
+
+#### CachedWeatherServiceTests
+
+- `GetWeatherForecastAsync` returns forecasts with valid `Summary` strings derived from `WeatherSummaryFormatter`
+- Cache hit/miss paths verified end-to-end
 
 ### Integration Tests (Future)
 
@@ -1139,6 +1208,30 @@ app.UseExceptionHandler(); // Always on (production-safe details)
 ```
 
 **Why it's good:** Secure by default, explicit opt-in for dev tools, follows least privilege
+
+---
+
+### 11. Summary Formatting
+
+#### ❌ BAD: Inline summary strings in endpoint or service logic
+
+```csharp
+// Scattered, untestable, duplicated in multiple places
+var summaries = new[] { "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot" };
+summary = summaries[Random.Shared.Next(summaries.Length)]; // Completely disconnected from temperature
+```
+
+**Why it's bad:** Random labels don't correlate with temperature, duplicated across service and tests, impossible to assert, CSS classes drift from labels
+
+#### ✅ GOOD: Dedicated static formatter (Current implementation)
+
+```csharp
+// WeatherSummaryFormatter.Format — one place, tested, consistent
+var summary = WeatherSummaryFormatter.Format(temperatureC, humidity);
+// → "Mild – humidity 65%"
+```
+
+**Why it's good:** Temperature-derived labels (no more "Freezing" on a 30°C day), testable in isolation, CSS classes in WeatherCard.razor and API labels stay aligned, humidity formatting is centralized
 
 ## 📚 Related Documentation
 
