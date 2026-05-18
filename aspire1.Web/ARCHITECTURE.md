@@ -157,7 +157,7 @@ private void IncrementCount()
 - Error handling
 - Data binding
 - Card-based UI with responsive grid layout
-- Feature flag support for humidity display, emoji reactions, and diagnostics panel
+- Feature flag support for humidity display
 
 **UI Components:**
 
@@ -165,8 +165,6 @@ private void IncrementCount()
 - Responsive 3-column grid on large screens, 2-column on medium, 1-column on mobile
 - Hover effects with elevation and shadow transitions
 - Humidity display controlled by `WeatherHumidity` feature flag
-- Emoji reaction bar controlled by `WeatherEmojiReactions` feature flag (off by default)
-- Developer diagnostics panel controlled by `WeatherCardDiagnostics` feature flag (off by default)
 
 **Flow:**
 
@@ -181,19 +179,16 @@ sequenceDiagram
     participant API as aspire1.WeatherService
 
     User->>Weather.razor: Navigate to /weather
-    Weather.razor->>FeatureManager: IsEnabledAsync("WeatherForecast")
-    Weather.razor->>FeatureManager: IsEnabledAsync("WeatherHumidity")
-    Weather.razor->>FeatureManager: IsEnabledAsync("WeatherEmojiReactions")
-    Weather.razor->>FeatureManager: IsEnabledAsync("WeatherCardDiagnostics")
-    FeatureManager-->>Weather.razor: flag booleans
     Weather.razor->>WeatherApiClient: GetWeatherAsync()
     WeatherApiClient->>ServiceDiscovery: Resolve "weatherservice"
     ServiceDiscovery-->>WeatherApiClient: https://weatherservice:8443
     WeatherApiClient->>API: GET /weatherforecast
     API-->>WeatherApiClient: Weather data (JSON with humidity)
     WeatherApiClient-->>Weather.razor: List<WeatherForecast>
-    Weather.razor->>WeatherCard: Render cards with flag params
-    WeatherCard-->>User: Rendered cards (with humidity / reactions / diagnostics per flags)
+    Weather.razor->>WeatherCard: Render cards for each forecast
+    WeatherCard->>FeatureManager: IsEnabledAsync("WeatherHumidity")
+    FeatureManager-->>WeatherCard: true/false
+    WeatherCard-->>User: Rendered cards (with/without humidity)
 ```
 
 ---
@@ -208,9 +203,6 @@ sequenceDiagram
 - Temperature display (Celsius and Fahrenheit)
 - Weather summary with icon placeholder
 - Humidity display controlled by `WeatherHumidity` feature flag
-- Emoji reaction bar controlled by `WeatherEmojiReactions` feature flag
-- Developer diagnostics panel controlled by `WeatherCardDiagnostics` feature flag
-- Real-time reaction count updates via `IReactionNotifier` subscription
 - Hover effects with elevation and shadow transitions
 - Bootstrap 5 card styling with custom enhancements
 
@@ -222,72 +214,25 @@ public WeatherForecast? Forecast { get; set; }
 
 [Parameter]
 public bool ShowHumidity { get; set; }
-
-[Parameter]
-public bool ShowReactions { get; set; }
-
-[Parameter]
-public bool ShowDiagnostics { get; set; }
-
-/// <summary>Mirrors the WeatherHumidity flag state so the diagnostics panel can report it accurately.</summary>
-[Parameter]
-public bool HumidityEnabled { get; set; }
 ```
 
 **Feature Flag Integration:**
 
-`Weather.razor` checks all three feature flags once during `OnInitializedAsync` and passes scalar booleans to each card. This is more efficient than each card injecting `IFeatureManager` directly.
+The component receives the `ShowHumidity` parameter from the parent `Weather.razor` component, which checks the feature flag once for all cards:
 
 ```csharp
-// In Weather.razor OnInitializedAsync
-showHumidity    = await FeatureManager.IsEnabledAsync("WeatherHumidity");
-showReactions   = await FeatureManager.IsEnabledAsync("WeatherEmojiReactions");
-showDiagnostics = await FeatureManager.IsEnabledAsync("WeatherCardDiagnostics");
+// In Weather.razor
+showHumidity = await FeatureManager.IsEnabledAsync("WeatherHumidity");
 
 // Passed to each card
-<WeatherCard Forecast="@forecast"
-             ShowHumidity="@showHumidity"
-             ShowReactions="@showReactions"
-             ShowDiagnostics="@showDiagnostics"
-             HumidityEnabled="@showHumidity" />
+<WeatherCard Forecast="@forecast" ShowHumidity="@showHumidity" />
 ```
 
-**Real-Time Reaction Updates:**
-
-`WeatherCard` implements `IDisposable` and subscribes to `IReactionNotifier` on first render. When any circuit submits a reaction, `ReactionService` calls `IReactionNotifier.NotifyAsync`, which fans out to all subscribed cards for that date.
-
-```csharp
-protected override Task OnAfterRenderAsync(bool firstRender)
-{
-    if (firstRender && Forecast != null)
-    {
-        _handler = HandleReactionUpdateAsync;
-        Notifier.Subscribe(_handler);
-    }
-    return Task.CompletedTask;
-}
-
-public void Dispose()
-{
-    if (_handler != null)
-        Notifier.Unsubscribe(_handler);
-}
-```
-
-**Diagnostics Panel (dev-only):**
-
-When `ShowDiagnostics` is `true`, a collapsible `<details>` panel renders below the card body showing:
-
-- Date key (ISO 8601)
-- Temperature values (°C / °F)
-- Humidity, summary, and temperature category
-- Current feature flag states for all three weather flags
-- Metric event names emitted by this card
-- Cache/source status note (tracked server-side only via `cache.hits`/`cache.misses`)
+This approach is more efficient than checking the feature flag in each card instance, especially when rendering multiple forecasts.
 
 **Styling:**
 
-- Custom CSS classes: `.weather-card`, `.weather-temp`, `.weather-summary`, `.humidity-info`, `.reaction-bar`, `.weather-diag-panel`, `.weather-diag-table`
+- Custom CSS classes: `.weather-card`, `.weather-temp`, `.weather-summary`, `.humidity-info`
 - Card header with blue gradient background
 - Large temperature display with secondary unit label
 - Humidity badge with light blue background (when enabled)
@@ -611,20 +556,17 @@ sequenceDiagram
 4. **Redis Distributed Cache & Session State:** Configures Redis with offline-first fallback to in-memory
 5. **Razor Components:** Blazor Server rendering engine
 6. **Interactive Server Mode:** SignalR-based component updates
-7. **SignalR:** `AddSignalR()` registers hub infrastructure; `ReactionHub` maps to `/hubs/reactions`
-8. **Reaction Services:** `IReactionNotifier` registered as singleton (shared across all circuits); `ReactionService` registered as scoped (one per Blazor Server circuit) with optional `IConnectionMultiplexer` for Redis
-9. **Output Cache:** Middleware registered for future use on static/non-feature-flag pages. **NOT used on dynamic, feature-flag-driven pages** (see [Output Caching and Feature Flags](#output-caching-and-feature-flags))
-10. **HTTP Client:** Typed client with service discovery fallback
-11. **Middleware Pipeline:**
-    - Exception handler (production)
-    - HSTS (production)
-    - HTTPS redirection
-    - Antiforgery tokens (CSRF protection)
-    - Session middleware
-    - Azure App Config refresh middleware (if configured)
-    - Static files
-12. **Health Endpoints:** `/health`, `/alive` (from ServiceDefaults)
-13. **SignalR Hub:** `/hubs/reactions` (ReactionHub)
+7. **Output Cache:** Middleware registered for future use on static/non-feature-flag pages. **NOT used on dynamic, feature-flag-driven pages** (see [Output Caching and Feature Flags](#output-caching-and-feature-flags))
+8. **HTTP Client:** Typed client with service discovery fallback
+9. **Middleware Pipeline:**
+   - Exception handler (production)
+   - HSTS (production)
+   - HTTPS redirection
+   - Antiforgery tokens (CSRF protection)
+   - Session middleware
+   - Azure App Config refresh middleware (if configured)
+   - Static files
+10. **Health Endpoints:** `/health`, `/alive` (from ServiceDefaults)
 
 ## 🎛️ Feature Flags & Azure App Configuration
 
@@ -666,19 +608,7 @@ app.UseAzureAppConfiguration(); // Enables dynamic refresh every 30 seconds
 
 ### Feature Flags Used
 
-All flags are defined in `appsettings.Development.json` (local defaults) and can be overridden via Azure App Configuration in deployed environments.
-
-| Flag | Default (Dev) | Component | Effect |
-|---|---|---|---|
-| `WeatherForecast` | `true` | `Weather.razor` | Enables the weather forecast page entirely |
-| `DetailedHealth` | `true` | `FeatureDemo.razor` | Shows detailed health endpoint info |
-| `WeatherHumidity` | `true` | `WeatherCard.razor` | Shows humidity reading on each card |
-| `WeatherEmojiReactions` | **`false`** | `WeatherCard.razor` | Shows emoji reaction bar (☀️👍🤔❄️🔥) with real-time counts |
-| `WeatherCardDiagnostics` | **`false`** | `WeatherCard.razor` | Shows collapsible dev diagnostics panel with flag states and metric names |
-
-`WeatherEmojiReactions` and `WeatherCardDiagnostics` are off by default — enable them in `appsettings.Development.json` or Azure App Configuration for development/QA.
-
-Example usage in `FeatureDemo.razor`:
+The Web project can use feature flags from Azure App Configuration. Example usage in `FeatureDemo.razor`:
 
 ```razor
 @inject IFeatureManager FeatureManager
