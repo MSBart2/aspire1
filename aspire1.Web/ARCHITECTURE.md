@@ -157,7 +157,7 @@ private void IncrementCount()
 - Error handling
 - Data binding
 - Card-based UI with responsive grid layout
-- Feature flag support for humidity display
+- Feature flag support for humidity display and developer diagnostics panel
 
 **UI Components:**
 
@@ -165,8 +165,7 @@ private void IncrementCount()
 - Responsive 3-column grid on large screens, 2-column on medium, 1-column on mobile
 - Hover effects with elevation and shadow transitions
 - Humidity display controlled by `WeatherHumidity` feature flag
-
-**Flow:**
+- Developer diagnostics panel controlled by `WeatherCardDiagnostics` feature flag (off by default)
 
 ```mermaid
 sequenceDiagram
@@ -185,10 +184,11 @@ sequenceDiagram
     WeatherApiClient->>API: GET /weatherforecast
     API-->>WeatherApiClient: Weather data (JSON with humidity)
     WeatherApiClient-->>Weather.razor: List<WeatherForecast>
-    Weather.razor->>WeatherCard: Render cards for each forecast
-    WeatherCard->>FeatureManager: IsEnabledAsync("WeatherHumidity")
-    FeatureManager-->>WeatherCard: true/false
-    WeatherCard-->>User: Rendered cards (with/without humidity)
+    Weather.razor->>FeatureManager: IsEnabledAsync("WeatherHumidity")
+    Weather.razor->>FeatureManager: IsEnabledAsync("WeatherCardDiagnostics")
+    FeatureManager-->>Weather.razor: showHumidity, showDiagnostics
+    Weather.razor->>WeatherCard: Render cards (ShowHumidity, ShowDiagnostics)
+    WeatherCard-->>User: Rendered cards (with/without humidity, with/without diagnostics panel)
 ```
 
 ---
@@ -203,6 +203,7 @@ sequenceDiagram
 - Temperature display (Celsius and Fahrenheit)
 - Weather summary with icon placeholder
 - Humidity display controlled by `WeatherHumidity` feature flag
+- Developer diagnostics panel controlled by `WeatherCardDiagnostics` feature flag (hidden by default)
 - Hover effects with elevation and shadow transitions
 - Bootstrap 5 card styling with custom enhancements
 
@@ -214,21 +215,40 @@ public WeatherForecast? Forecast { get; set; }
 
 [Parameter]
 public bool ShowHumidity { get; set; }
+
+[Parameter]
+public bool ShowDiagnostics { get; set; }
 ```
 
 **Feature Flag Integration:**
 
-The component receives the `ShowHumidity` parameter from the parent `Weather.razor` component, which checks the feature flag once for all cards:
+Both `ShowHumidity` and `ShowDiagnostics` are resolved once in `Weather.razor` and passed down to every card, avoiding redundant flag checks per card instance:
 
 ```csharp
 // In Weather.razor
 showHumidity = await FeatureManager.IsEnabledAsync("WeatherHumidity");
+showDiagnostics = await FeatureManager.IsEnabledAsync("WeatherCardDiagnostics");
 
 // Passed to each card
-<WeatherCard Forecast="@forecast" ShowHumidity="@showHumidity" />
+<WeatherCard Forecast="@forecast" ShowHumidity="@showHumidity" ShowDiagnostics="@showDiagnostics" />
 ```
 
 This approach is more efficient than checking the feature flag in each card instance, especially when rendering multiple forecasts.
+
+**Diagnostics Panel (`WeatherCardDiagnostics` flag):**
+
+When `WeatherCardDiagnostics` is enabled, each weather card renders a compact developer diagnostics panel (`.weather-card-diagnostics`) that displays:
+
+| Field | Value |
+|---|---|
+| Date key | ISO 8601 date string (e.g. `2025-07-15`) |
+| Temperature | `22°C / 72°F` |
+| Humidity | Actual `%` or `n/a` when zero |
+| Summary | Raw summary string or `n/a` if null |
+| Flags active | `WeatherHumidity: True · WeatherCardDiagnostics: true` |
+| Source / cache | ⚠ Not available at UI layer |
+
+The panel is **invisible to normal users** (flag defaults to `false` in `appsettings.Development.json`). Enable it at dev-time by toggling `WeatherCardDiagnostics: true` locally or in Azure App Configuration.
 
 **Styling:**
 
@@ -608,7 +628,14 @@ app.UseAzureAppConfiguration(); // Enables dynamic refresh every 30 seconds
 
 ### Feature Flags Used
 
-The Web project can use feature flags from Azure App Configuration. Example usage in `FeatureDemo.razor`:
+| Flag | Default (dev) | Effect |
+|---|---|---|
+| `WeatherForecast` | `true` | Shows/hides the entire weather page |
+| `DetailedHealth` | `true` | Enables the `/health/detailed` endpoint |
+| `WeatherHumidity` | `true` | Shows humidity field on each weather card |
+| `WeatherCardDiagnostics` | `false` | Shows developer diagnostics panel on each weather card |
+
+The Web project reads flags via `IFeatureManager` from Azure App Configuration (with offline fallback to `appsettings.Development.json`). Example usage in `FeatureDemo.razor`:
 
 ```razor
 @inject IFeatureManager FeatureManager
@@ -1174,6 +1201,7 @@ builder.AddServiceDefaults(); // ← Adds standard resilience handler to ALL Htt
         if (featureEnabled)
         {
             showHumidity = await FeatureManager.IsEnabledAsync("WeatherHumidity");
+            showDiagnostics = await FeatureManager.IsEnabledAsync("WeatherCardDiagnostics");
             forecasts = await WeatherApi.GetWeatherAsync();
             // Streams UI incrementally — Redis caches API data at 5-minute TTL
         }
