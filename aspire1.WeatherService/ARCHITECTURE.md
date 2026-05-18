@@ -26,6 +26,7 @@ graph TB
         Middleware[Middleware Pipeline]
         Routes[Minimal API Routes]
         CachedService[CachedWeatherService]
+        Formatter[WeatherSummaryFormatter]
         FeatureFlags[Feature Manager]
         ServiceDefaults[ServiceDefaults<br/>OpenTelemetry, Health]
 
@@ -54,6 +55,7 @@ graph TB
     
     Weather --> FeatureFlags
     Weather --> CachedService
+    CachedService --> Formatter
     CachedService --> Redis
     HealthDetailed --> FeatureFlags
 
@@ -62,6 +64,7 @@ graph TB
 
     style Routes fill:#0078d4,stroke:#005a9e,color:#fff
     style CachedService fill:#50e6ff
+    style Formatter fill:#ffe066,stroke:#bba000
     style FeatureFlags fill:#90EE90
 ```
 
@@ -109,7 +112,7 @@ graph TB
 
 - Delegates to `CachedWeatherService` for Redis-backed caching
 - Cache TTL: 5 minutes (sliding)
-- Generates random forecast data (no database)
+- Generates forecast data with temperatures via `Random.Shared`; summaries are deterministic via `WeatherSummaryFormatter`
 - Falls back to in-memory cache if Redis unavailable
 - Demonstrates JSON serialization
 
@@ -128,6 +131,8 @@ ApplicationMetrics.WeatherApiCalls.Add(1,
     new KeyValuePair<string, object?>("feature_enabled", "true"));
 
 // Tracks sunny forecasts by temperature range
+// Note: summaries are now deterministic (Freezing/Cold/Mild/Warm/Hot) via WeatherSummaryFormatter.
+// "Sunny" never matches; SunnyForecasts metric will always be 0 until this filter is updated.
 foreach (var forecast in forecasts.Where(f => f.Summary?.Contains("Sunny") == true))
 {
     ApplicationMetrics.SunnyForecasts.Add(1,
@@ -298,6 +303,7 @@ sequenceDiagram
 5. **Problem Details:** Standardized error responses (RFC 7807)
 6. **OpenAPI:** Swagger/OpenAPI documentation generation
 7. **CachedWeatherService:** Registers scoped service for Redis-backed weather caching
+8. **WeatherSummaryFormatter:** Static helper (no DI required) that maps `temperatureC` → deterministic label (Freezing/Cold/Mild/Warm/Hot)
 8. **Version Extraction:** Reads from `APP_VERSION` env var or assembly metadata
 9. **Middleware Pipeline:** Exception handler, Azure App Config refresh middleware (if configured)
 10. **Endpoint Mapping:** Minimal API routes with feature flag integration
