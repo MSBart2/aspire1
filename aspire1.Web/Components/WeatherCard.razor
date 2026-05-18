@@ -26,6 +26,26 @@
                     </div>
                 </div>
             </div>
+            @if (ShowDiagnostics)
+            {
+                <div class="weather-card-diagnostics mt-3" data-testid="weather-card-diagnostics">
+                    <div class="diagnostics-header">🔍 Dev Diagnostics</div>
+                    <dl class="diagnostics-data mb-0">
+                        <dt>Date key</dt>
+                        <dd data-testid="diag-date">@Forecast.Date.ToString("yyyy-MM-dd")</dd>
+                        <dt>Temperature</dt>
+                        <dd data-testid="diag-temp">@Forecast.TemperatureC°C / @Forecast.TemperatureF°F</dd>
+                        <dt>Humidity</dt>
+                        <dd data-testid="diag-humidity">@(Forecast.Humidity > 0 ? $"{Forecast.Humidity}%" : "n/a")</dd>
+                        <dt>Summary</dt>
+                        <dd data-testid="diag-summary">@(Forecast.Summary ?? "n/a")</dd>
+                        <dt>Flags active</dt>
+                        <dd data-testid="diag-flags">WeatherHumidity: @ShowHumidity · WeatherCardDiagnostics: true</dd>
+                        <dt>Source / cache</dt>
+                        <dd class="text-muted fst-italic">⚠ Not available at UI layer</dd>
+                    </dl>
+                </div>
+            }
         </div>
     </div>
 }
@@ -36,6 +56,9 @@
 
     [Parameter]
     public bool ShowHumidity { get; set; }
+
+    [Parameter]
+    public bool ShowDiagnostics { get; set; }
 
     private string GetTemperatureClass(int temperatureC) =>
         temperatureC switch
