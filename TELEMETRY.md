@@ -265,17 +265,165 @@ All ARCHITECTURE.md files updated with telemetry documentation:
 - ✅ [`aspire1.Web/ARCHITECTURE.md`](aspire1.Web/ARCHITECTURE.md) - Web telemetry tracking
 - ✅ [`aspire1.AppHost/ARCHITECTURE.md`](aspire1.AppHost/ARCHITECTURE.md) - App Insights resource configuration
 
+## 🛠️ Developer Runbook: Working With Observability
+
+This section is a workflow guide for developers adding, validating, or troubleshooting custom metrics. It assumes the app already runs locally.
+
+### Where Metrics Are Defined
+
+All custom metrics live in a single file:
+
+- **[`aspire1.ServiceDefaults/ApplicationMetrics.cs`](aspire1.ServiceDefaults/ApplicationMetrics.cs)** — defines the `Meter`, all `Counter<T>` and `Histogram<T>` instruments, and cardinality-reduction helpers.
+
+The meter is registered into the OpenTelemetry pipeline in:
+
+- **[`aspire1.ServiceDefaults/Extensions.cs`](aspire1.ServiceDefaults/Extensions.cs)** — look for `.AddMeter("aspire1.metrics")` in the `WithMetrics` block.
+
+### Finding Existing Instruments
+
+To list all counters, histograms, and their tags without reading every file:
+
+```bash
+# List every instrument name
+grep -r "Meter.Create" aspire1.ServiceDefaults/ApplicationMetrics.cs
+
+# Find every call site (who records what)
+grep -r "ApplicationMetrics\." --include="*.cs" .
+
+# Find tag names in use
+grep -r "KeyValuePair\|new TagList\|TagList " --include="*.cs" .
+```
+
+Current instruments at a glance (see `ApplicationMetrics.cs` for the authoritative list):
+
+| Instrument | Type | Primary call site |
+|---|---|---|
+| `counter.clicks` | Counter | `aspire1.Web/Components/Pages/Counter.razor` |
+| `weather.api.calls` | Counter | `aspire1.WeatherService/Program.cs` |
+| `weather.sunny.count` | Counter | `aspire1.WeatherService/Program.cs` |
+| `cache.hits` | Counter | `aspire1.WeatherService/Services/CachedWeatherService.cs` |
+| `cache.misses` | Counter | `aspire1.WeatherService/Services/CachedWeatherService.cs` |
+| `api.call.duration` | Histogram | `aspire1.Web/WeatherApiClient.cs` |
+
+### Running Locally for Observability Checks
+
+```bash
+# 1. Start all services via AppHost
+dotnet run --project aspire1.AppHost/aspire1.AppHost.csproj
+
+# 2. Open the Aspire Dashboard
+#    → https://localhost:15888
+
+# 3. Navigate: Metrics → Select a service → Namespace: aspire1.metrics
+
+# 4. Generate traffic to populate data:
+#    - Visit /counter and click the button a few times
+#    - Visit /weather to trigger API calls and cache activity
+```
+
+Expected console output when running offline (no Azure connection):
+
+```
+⚠️  Application Insights not configured (offline mode)
+```
+
+This is normal — all metrics still flow to the Aspire Dashboard.
+
+### Adding a New Metric
+
+Follow this four-step pattern:
+
+**Step 1 — Declare the instrument** in `ApplicationMetrics.cs`:
+
+```csharp
+/// <summary>
+/// Tracks [what this measures].
+/// Tags: [tag1], [tag2]
+/// </summary>
+public static readonly Counter<long> MyNewCounter = Meter.CreateCounter<long>(
+    "my.new.metric",
+    unit: "units",
+    description: "Human-readable description");
+```
+
+**Step 2 — Record at the call site** (use the nearest appropriate service or component):
+
+```csharp
+ApplicationMetrics.MyNewCounter.Add(1,
+    new KeyValuePair<string, object?>("tag1", value1),
+    new KeyValuePair<string, object?>("tag2", value2));
+```
+
+**Step 3 — No registration change needed** — the meter is already registered. New instruments on `"aspire1.metrics"` are picked up automatically.
+
+**Step 4 — Verify** using the checklist below.
+
+> ⚠️ **Cardinality warning:** Keep tag values in small, bounded sets. Use helpers like `ApplicationMetrics.GetCountRange()` and `GetTemperatureRange()` as a pattern — add similar helpers for any tag with unbounded values (user IDs, URLs, etc.).
+
+### ✅ Validation Checklist
+
+Use this checklist after adding or modifying a metric:
+
+- [ ] **Instrument declared** in `ApplicationMetrics.cs` with XML doc comment, unit, and description
+- [ ] **Call site exists** — at least one `.Add()` or `.Record()` call in the relevant service/component
+- [ ] **Tags are bounded** — each tag value comes from a fixed set or a range-bucketing helper
+- [ ] **Local smoke test passed** — metric appears in Aspire Dashboard after generating traffic
+  - Dashboard path: `https://localhost:15888` → Metrics → `aspire1.metrics` → find your instrument
+- [ ] **Feature-flag path verified** — if the call site is inside a feature-flagged block, tested with flag both on and off (see troubleshooting section)
+- [ ] **No duplicate instrument names** — ran `grep "my.new.metric" --include="*.cs" .` to confirm single definition
+
 ## 🔧 Troubleshooting
 
 ### Metrics not appearing in Aspire Dashboard
 
+**Check 1 — Is the meter registered?**
+
 ```bash
-# Verify meter is registered
-dotnet run --project aspire1.AppHost
-# Check console for: "⚠️  Application Insights not configured (offline mode)"
-# Navigate to https://localhost:15888 → Metrics
-# Search for "aspire1.metrics"
+grep -n "AddMeter" aspire1.ServiceDefaults/Extensions.cs
+# Should output: .AddMeter("aspire1.metrics")
 ```
+
+**Check 2 — Is the instrument actually called?**
+
+Metrics only appear in the dashboard after at least one data point is recorded. The Aspire Dashboard shows no entry for instruments that have never been called.
+
+```bash
+# Confirm the call site exists
+grep -rn "ApplicationMetrics\." --include="*.cs" .
+
+# Then generate traffic:
+# Visit /counter → click the button
+# Visit /weather → triggers API + cache metrics
+```
+
+**Check 3 — Is the meter namespace correct in the dashboard?**
+
+In the Aspire Dashboard (https://localhost:15888 → Metrics), select the service, then look for namespace `aspire1.metrics`. New instruments appear under the same namespace automatically.
+
+### Metric silenced by a feature flag
+
+Some call sites sit inside feature-flagged code paths. If a metric never appears even after generating traffic, check whether its call site is guarded:
+
+```bash
+# Search for feature flag guards near the call site
+grep -B5 "ApplicationMetrics\." aspire1.WeatherService/Program.cs
+```
+
+- `weather.api.calls` with `feature_enabled: "true"` only fires when the `WeatherFeatures:EnhancedForecasts` flag is on.
+- To toggle the flag locally, update `appsettings.json` or `appsettings.Development.json`:
+
+```json
+{
+  "FeatureManagement": {
+    "WeatherFeatures": {
+      "EnhancedForecasts": true
+    }
+  }
+}
+```
+
+- Restart the service after changing feature flag config.
+- Always validate metrics with the flag both on and off — see the validation checklist above.
 
 ### Application Insights not receiving data
 
@@ -286,6 +434,8 @@ azd env get-values | grep APPLICATIONINSIGHTS_CONNECTION_STRING
 # Check console logs for:
 # "✅ Application Insights telemetry enabled"
 ```
+
+If the connection string is present but data is still missing, check for the offline-mode try-catch in `Extensions.cs` — an exception during Azure Monitor setup is swallowed gracefully, so check the startup logs for any warning messages.
 
 ### Bicep deployment errors
 
