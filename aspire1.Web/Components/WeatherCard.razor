@@ -45,6 +45,27 @@
                     </button>
                 }
             </div>
+            @if (ShowDiagnostics)
+            {
+                <details class="weather-diag-panel mt-2">
+                    <summary>🔍 Dev Diagnostics</summary>
+                    <table class="weather-diag-table">
+                        <tbody>
+                            <tr><th>Date key</th><td>@Forecast.Date.ToString("yyyy-MM-dd")</td></tr>
+                            <tr><th>Temperature (C)</th><td>@Forecast.TemperatureC °C</td></tr>
+                            <tr><th>Temperature (F)</th><td>@Forecast.TemperatureF °F</td></tr>
+                            <tr><th>Humidity</th><td>@Forecast.Humidity%</td></tr>
+                            <tr><th>Summary</th><td>@Forecast.Summary</td></tr>
+                            <tr><th>Temp category</th><td>@GetTemperatureClass(Forecast.TemperatureC)</td></tr>
+                            <tr><th>WeatherForecast flag</th><td>✅ Enabled</td></tr>
+                            <tr><th>WeatherHumidity flag</th><td>@(HumidityEnabled ? "✅ Enabled" : "❌ Disabled")</td></tr>
+                            <tr><th>WeatherCardDiagnostics flag</th><td>✅ Enabled</td></tr>
+                            <tr><th>Metric events</th><td>weather.api.calls, api.call.duration, cache.hits, cache.misses, weather.reactions</td></tr>
+                            <tr><th>Cache/source status</th><td><em>Not surfaced in API response — tracked server-side via cache.hits / cache.misses metrics</em></td></tr>
+                        </tbody>
+                    </table>
+                </details>
+            }
         </div>
     </div>
 }
@@ -55,6 +76,12 @@
 
     [Parameter]
     public bool ShowHumidity { get; set; }
+
+    [Parameter]
+    public bool ShowDiagnostics { get; set; }
+
+    [Parameter]
+    public bool HumidityEnabled { get; set; }
 
     private Dictionary<string, int> _counts = [];
     private Func<DateOnly, IReadOnlyDictionary<string, int>, Task>? _handler;
