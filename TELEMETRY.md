@@ -288,10 +288,10 @@ To list all counters, histograms, and their tags without reading every file:
 grep -r "Meter.Create" aspire1.ServiceDefaults/ApplicationMetrics.cs
 
 # Find every call site (who records what)
-grep -r "ApplicationMetrics\." --include="*.cs" .
+grep -r "ApplicationMetrics\." --include="*.cs" --include="*.razor" .
 
 # Find tag names in use
-grep -r "KeyValuePair\|new TagList\|TagList " --include="*.cs" .
+grep -r "KeyValuePair\|new TagList\|TagList " --include="*.cs" --include="*.razor" .
 ```
 
 Current instruments at a glance (see `ApplicationMetrics.cs` for the authoritative list):
@@ -370,7 +370,7 @@ Use this checklist after adding or modifying a metric:
 - [ ] **Local smoke test passed** — metric appears in Aspire Dashboard after generating traffic
   - Dashboard path: `https://localhost:15888` → Metrics → `aspire1.metrics` → find your instrument
 - [ ] **Feature-flag path verified** — if the call site is inside a feature-flagged block, tested with flag both on and off (see troubleshooting section)
-- [ ] **No duplicate instrument names** — ran `grep "my.new.metric" --include="*.cs" .` to confirm single definition
+- [ ] **No duplicate instrument names** — ran `grep "my.new.metric" --include="*.cs" --include="*.razor" .` to confirm single definition
 
 ## 🔧 Troubleshooting
 
@@ -389,7 +389,7 @@ Metrics only appear in the dashboard after at least one data point is recorded. 
 
 ```bash
 # Confirm the call site exists
-grep -rn "ApplicationMetrics\." --include="*.cs" .
+grep -rn "ApplicationMetrics\." --include="*.cs" --include="*.razor" .
 
 # Then generate traffic:
 # Visit /counter → click the button
@@ -409,15 +409,13 @@ Some call sites sit inside feature-flagged code paths. If a metric never appears
 grep -B5 "ApplicationMetrics\." aspire1.WeatherService/Program.cs
 ```
 
-- `weather.api.calls` with `feature_enabled: "true"` only fires when the `WeatherFeatures:EnhancedForecasts` flag is on.
+- `weather.api.calls` with `feature_enabled: "true"` only fires when the `WeatherForecast` flag is on.
 - To toggle the flag locally, update `appsettings.json` or `appsettings.Development.json`:
 
 ```json
 {
   "FeatureManagement": {
-    "WeatherFeatures": {
-      "EnhancedForecasts": true
-    }
+    "WeatherForecast": true
   }
 }
 ```
