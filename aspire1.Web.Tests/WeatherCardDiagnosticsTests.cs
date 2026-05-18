@@ -134,6 +134,7 @@ public class WeatherCardDiagnosticsTests : BunitContext
         var featureManager = Substitute.For<IFeatureManager>();
         featureManager.IsEnabledAsync("WeatherForecast").Returns(Task.FromResult(true));
         featureManager.IsEnabledAsync("WeatherHumidity").Returns(Task.FromResult(false));
+        featureManager.IsEnabledAsync("WeatherEmojiReactions").Returns(Task.FromResult(false));
         featureManager.IsEnabledAsync("WeatherCardDiagnostics").Returns(Task.FromResult(false));
 
         var fakeForecasts = new[]
