@@ -158,7 +158,7 @@ public class CachedWeatherServiceTests
     public async Task GetWeatherForecastAsync_GeneratesValidSummaries()
     {
         // Arrange
-        var validSummaries = new[] { "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching" };
+        var validSummaries = new[] { "Freezing", "Cold", "Mild", "Warm", "Hot" };
         _mockCache.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns((byte[]?)null);
 
