@@ -1,7 +1,5 @@
 using aspire1.Web;
 using aspire1.Web.Components;
-using aspire1.Web.Hubs;
-using aspire1.Web.Services;
 using Azure.Identity;
 using Microsoft.Extensions.Configuration.AzureAppConfiguration;
 using Microsoft.FeatureManagement;
@@ -89,13 +87,6 @@ else
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-builder.Services.AddSignalR();
-
-builder.Services.AddSingleton<IReactionNotifier, ReactionNotifier>();
-builder.Services.AddScoped(sp => new ReactionService(
-    sp.GetRequiredService<IReactionNotifier>(),
-    sp.GetService<StackExchange.Redis.IConnectionMultiplexer>()));
-
 builder.Services.AddOutputCache();
 
 builder.Services.AddHttpClient<WeatherApiClient>(client =>
@@ -137,8 +128,6 @@ app.MapStaticAssets();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
-
-app.MapHub<ReactionHub>("/hubs/reactions");
 
 app.MapDefaultEndpoints();
 

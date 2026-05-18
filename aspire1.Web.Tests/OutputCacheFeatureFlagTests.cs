@@ -1,5 +1,4 @@
 using aspire1.Contracts;
-using aspire1.Web.Services;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -22,13 +21,6 @@ namespace aspire1.Web.Tests;
 /// </summary>
 public class OutputCacheFeatureFlagTests : BunitContext
 {
-    private void RegisterReactionServices()
-    {
-        var notifier = Substitute.For<IReactionNotifier>();
-        Services.AddSingleton(notifier);
-        Services.AddScoped(sp => new ReactionService(sp.GetRequiredService<IReactionNotifier>()));
-    }
-
     [Fact]
     public void WeatherForecastFlag_WhenDisabled_RendersFeatureDisabledAlert()
     {
@@ -38,7 +30,6 @@ public class OutputCacheFeatureFlagTests : BunitContext
 
         Services.AddSingleton(featureManager);
         Services.AddSingleton(BuildFakeWeatherApiClient([]));
-        RegisterReactionServices();
 
         // Act — render Weather.razor with the feature flag disabled
         // WeatherApiClient.GetWeatherAsync() is never called on this code path
@@ -65,7 +56,6 @@ public class OutputCacheFeatureFlagTests : BunitContext
         };
         Services.AddSingleton(featureManager);
         Services.AddSingleton(BuildFakeWeatherApiClient(fakeForecasts));
-        RegisterReactionServices();
 
         // Act — render Weather.razor with the feature flag enabled
         var cut = Render<Weather>();
@@ -90,7 +80,6 @@ public class OutputCacheFeatureFlagTests : BunitContext
         };
         Services.AddSingleton(featureManager);
         Services.AddSingleton(BuildFakeWeatherApiClient(fakeForecasts));
-        RegisterReactionServices();
 
         // Act
         var cut = Render<Weather>();
@@ -123,7 +112,6 @@ public class OutputCacheFeatureFlagTests : BunitContext
 
         Services.AddSingleton(featureManager);
         Services.AddSingleton(client);
-        RegisterReactionServices();
 
         // Act — render Weather.razor with this race condition
         var cut = Render<Weather>();
