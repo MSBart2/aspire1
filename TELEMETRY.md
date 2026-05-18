@@ -31,14 +31,15 @@ This document describes the Application Insights telemetry implementation for th
 
 **Instruments:**
 
-| Name                  | Type      | Unit      | Tags                      | Description                          |
-| --------------------- | --------- | --------- | ------------------------- | ------------------------------------ |
-| `counter.clicks`      | Counter   | clicks    | page, range               | Counter page button clicks by range  |
-| `weather.api.calls`   | Counter   | calls     | endpoint, feature_enabled | Total weather API calls              |
-| `weather.sunny.count` | Counter   | forecasts | temperature_range         | Sunny forecasts by temperature range |
-| `cache.hits`          | Counter   | hits      | entity                    | Cache hit count                      |
-| `cache.misses`        | Counter   | misses    | entity                    | Cache miss count                     |
-| `api.call.duration`   | Histogram | ms        | endpoint, success         | API call latency distribution        |
+| Name                    | Type      | Unit      | Tags                            | Description                          |
+| ----------------------- | --------- | --------- | ------------------------------- | ------------------------------------ |
+| `counter.clicks`        | Counter   | clicks    | page, range                     | Counter page button clicks by range  |
+| `weather.api.calls`     | Counter   | calls     | endpoint, feature_enabled       | Total weather API calls              |
+| `weather.sunny.count`   | Counter   | forecasts | temperature_range               | Sunny forecasts by temperature range |
+| `cache.hits`            | Counter   | hits      | entity                          | Cache hit count                      |
+| `cache.misses`          | Counter   | misses    | entity                          | Cache miss count                     |
+| `api.call.duration`     | Histogram | ms        | endpoint, success               | API call latency distribution        |
+| `weather.reactions`     | Counter   | reactions | emoji, forecast_offset          | Emoji reactions on weather cards     |
 
 **Helper Methods:**
 
@@ -161,7 +162,8 @@ https://localhost:15888
           ├─ weather.sunny.count (by temperature_range)
           ├─ cache.hits (by entity)
           ├─ cache.misses (by entity)
-          └─ api.call.duration (histogram)
+          ├─ api.call.duration (histogram)
+          └─ weather.reactions (by emoji, forecast_offset)
 ```
 
 ### Application Insights (Azure)
@@ -305,7 +307,7 @@ azd env get-values | grep APPLICATIONINSIGHTS_CONNECTION_STRING
 
 ## 🎉 Summary
 
-- ✅ 6 custom metrics tracking business KPIs
+- ✅ 7 custom metrics tracking business KPIs
 - ✅ 5-panel dashboard for visualization
 - ✅ 3 automated alerts for proactive monitoring
 - ✅ Offline-first design for local development

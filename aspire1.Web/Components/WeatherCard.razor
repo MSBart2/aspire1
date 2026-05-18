@@ -1,3 +1,8 @@
+@using aspire1.Web.Services
+@inject ReactionService ReactionSvc
+@inject IReactionNotifier Notifier
+@implements IDisposable
+
 @if (Forecast != null)
 {
     <div class="card weather-card @GetTemperatureClass(Forecast.TemperatureC) mb-3" role="article" data-testid="weather-card">
@@ -26,6 +31,44 @@
                     </div>
                 </div>
             </div>
+            @if (ShowReactions)
+            {
+                <div class="reaction-bar mt-2 d-flex gap-2 flex-wrap" role="group" aria-label="Emoji reactions">
+                    @foreach (var emoji in ReactionService.SupportedEmojis)
+                    {
+                        var e = emoji;
+                        var count = _counts.GetValueOrDefault(e, 0);
+                        <button class="btn btn-sm btn-outline-secondary @(ReactionSvc.HasVoted(Forecast.Date, e) ? "active" : "")"
+                                @onclick="() => _ = ReactAsync(e)"
+                                aria-label="@e, @count reactions"
+                                data-testid="reaction-btn-@e"
+                                type="button">
+                            @e <span class="badge bg-secondary ms-1">@count</span>
+                        </button>
+                    }
+                </div>
+            }
+            @if (ShowDiagnostics)
+            {
+                <details class="weather-diag-panel mt-2">
+                    <summary>🔍 Dev Diagnostics</summary>
+                    <table class="weather-diag-table">
+                        <tbody>
+                            <tr><th>Date key</th><td>@Forecast.Date.ToString("yyyy-MM-dd")</td></tr>
+                            <tr><th>Temperature (C)</th><td>@Forecast.TemperatureC °C</td></tr>
+                            <tr><th>Temperature (F)</th><td>@Forecast.TemperatureF °F</td></tr>
+                            <tr><th>Humidity</th><td>@Forecast.Humidity%</td></tr>
+                            <tr><th>Summary</th><td>@Forecast.Summary</td></tr>
+                            <tr><th>Temp category</th><td>@GetTemperatureClass(Forecast.TemperatureC)</td></tr>
+                            <tr><th>WeatherForecast flag</th><td>✅ Enabled</td></tr>
+                            <tr><th>WeatherHumidity flag</th><td>@(HumidityEnabled ? "✅ Enabled" : "❌ Disabled")</td></tr>
+                            <tr><th>WeatherCardDiagnostics flag</th><td>✅ Enabled</td></tr>
+                            <tr><th>Metric events</th><td>weather.api.calls, api.call.duration, cache.hits, cache.misses, weather.reactions</td></tr>
+                            <tr><th>Cache/source status</th><td><em>Not surfaced in API response — tracked server-side via cache.hits / cache.misses metrics</em></td></tr>
+                        </tbody>
+                    </table>
+                </details>
+            }
         </div>
     </div>
 }
@@ -37,6 +80,47 @@
     [Parameter]
     public bool ShowHumidity { get; set; }
 
+    [Parameter]
+    public bool ShowReactions { get; set; }
+
+    [Parameter]
+    public bool ShowDiagnostics { get; set; }
+
+    [Parameter]
+    public bool HumidityEnabled { get; set; }
+
+    private Dictionary<string, int> _counts = [];
+    private Func<DateOnly, IReadOnlyDictionary<string, int>, Task>? _handler;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Forecast != null)
+            _counts = await ReactionSvc.GetReactionCountsAsync(Forecast.Date);
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Forecast != null)
+        {
+            _handler = HandleReactionUpdateAsync;
+            Notifier.Subscribe(_handler);
+        }
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleReactionUpdateAsync(DateOnly date, IReadOnlyDictionary<string, int> counts)
+    {
+        if (Forecast == null || date != Forecast.Date) return;
+        _counts = new Dictionary<string, int>(counts);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ReactAsync(string emoji)
+    {
+        if (Forecast == null) return;
+        await ReactionSvc.AddReactionAsync(Forecast.Date, emoji);
+    }
+
     private string GetTemperatureClass(int temperatureC) =>
         temperatureC switch
         {
@@ -46,4 +130,11 @@
             >= 26 and <= 40 => "weather-card--hot",
             _ => "weather-card--scorching"
         };
+
+    public void Dispose()
+    {
+        if (_handler != null)
+            Notifier.Unsubscribe(_handler);
+    }
 }
+
