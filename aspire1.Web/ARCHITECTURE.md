@@ -623,6 +623,27 @@ else
 }
 ```
 
+### WeatherDiagnostics Feature Flag
+
+| Property | Value |
+|----------|-------|
+| Flag name | `WeatherDiagnostics` |
+| Default | `false` (disabled) |
+| Config location | `appsettings.Development.json` → `FeatureManagement` |
+
+**Purpose:** When enabled, renders a compact diagnostics panel inside each weather card showing developer-oriented details:
+
+- Forecast date key (`yyyy-MM-dd`)
+- Source information (notes that cache status is not available at the UI layer)
+- Temperature values (Celsius and Fahrenheit)
+- Humidity value (or "N/A" when zero)
+- Active feature flag states (`WeatherDiagnostics`, `WeatherHumidity`)
+- Associated metric names (`aspire1.metrics/weather.api.calls`, `aspire1.metrics/api.call.duration`)
+
+**Component:** `WeatherDiagnosticsPanel.razor` — rendered conditionally by `WeatherCard.razor` when `ShowDiagnostics` parameter is true.
+
+**Design note:** The UI layer does not have visibility into `CachedWeatherService` cache hit/miss status. The diagnostics panel documents this honestly rather than displaying fabricated values. Cache metrics are tracked server-side via `ApplicationMetrics.CacheHits` and `ApplicationMetrics.CacheMisses`.
+
 ### Offline-First Design
 
 - App starts successfully without Azure App Configuration

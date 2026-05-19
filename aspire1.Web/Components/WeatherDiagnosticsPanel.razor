@@ -1,0 +1,26 @@
+@if (Forecast != null)
+{
+    <details class="weather-diagnostics-panel mt-2" data-testid="weather-diagnostics-panel"
+             style="font-size: 0.75rem; font-family: 'Cascadia Code', 'Fira Code', monospace; background: #f8f9fa; border-radius: 4px; padding: 0.5rem;">
+        <summary style="cursor: pointer; font-weight: 600; color: #6c757d;">
+            🔍 Diagnostics
+        </summary>
+        <div class="mt-1" style="color: #495057;">
+            <div><strong>Key:</strong> @Forecast.Date.ToString("yyyy-MM-dd")</div>
+            <div><strong>Source:</strong> API (cache status not available at UI layer)</div>
+            <div><strong>Temp C:</strong> @Forecast.TemperatureC°C</div>
+            <div><strong>Temp F:</strong> @Forecast.TemperatureF°F</div>
+            <div><strong>Humidity:</strong> @(Forecast.Humidity > 0 ? $"{Forecast.Humidity}%" : "N/A")</div>
+            <div><strong>Flags:</strong> WeatherDiagnostics=true, WeatherHumidity=@ShowHumidity.ToString().ToLower()</div>
+            <div><strong>Metrics:</strong> aspire1.metrics/weather.api.calls, aspire1.metrics/api.call.duration</div>
+        </div>
+    </details>
+}
+
+@code {
+    [Parameter]
+    public WeatherForecast? Forecast { get; set; }
+
+    [Parameter]
+    public bool ShowHumidity { get; set; }
+}
