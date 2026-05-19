@@ -138,7 +138,8 @@ aspire1/
 ├── aspire1.WeatherService/           # Backend REST API
 │   ├── Program.cs                    # API endpoints & middleware
 │   ├── Services/
-│   │   └── CachedWeatherService.cs   # Redis-backed caching service
+│   │   ├── CachedWeatherService.cs       # Redis-backed caching service
+│   │   └── WeatherSummaryFormatter.cs    # Deterministic temperature/humidity labels
 │   ├── appsettings.json              # Default configuration
 │   └── ARCHITECTURE.md               # API service architecture
 │
@@ -161,7 +162,8 @@ aspire1/
 │
 ├── aspire1.WeatherService.Tests/     # API service unit tests
 │   └── Services/
-│       └── CachedWeatherServiceTests.cs  # Cache service tests
+│       ├── CachedWeatherServiceTests.cs      # Cache service tests
+│       └── WeatherSummaryFormatterTests.cs   # Formatter unit tests
 │
 ├── aspire1.Web.Tests/                # Web frontend unit tests
 │   └── WeatherApiClientTests.cs      # HTTP client tests
