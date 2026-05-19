@@ -26,6 +26,10 @@
                     </div>
                 </div>
             </div>
+            @if (ShowDiagnostics)
+            {
+                <WeatherDiagnosticsPanel Forecast="@Forecast" ShowHumidity="@ShowHumidity" />
+            }
         </div>
     </div>
 }
@@ -36,6 +40,9 @@
 
     [Parameter]
     public bool ShowHumidity { get; set; }
+
+    [Parameter]
+    public bool ShowDiagnostics { get; set; }
 
     private string GetTemperatureClass(int temperatureC) =>
         temperatureC switch
