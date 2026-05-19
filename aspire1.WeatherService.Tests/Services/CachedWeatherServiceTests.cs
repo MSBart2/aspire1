@@ -157,8 +157,9 @@ public class CachedWeatherServiceTests
     [Fact]
     public async Task GetWeatherForecastAsync_GeneratesValidSummaries()
     {
-        // Arrange
-        var validSummaries = new[] { "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching" };
+        // Arrange — summaries now come from WeatherSummaryFormatter and may include humidity qualifiers
+        // (e.g. "Mild and Humid"), so we verify each summary starts with one of the ten base labels.
+        var baseLabels = new[] { "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching" };
         _mockCache.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns((byte[]?)null);
 
@@ -166,7 +167,9 @@ public class CachedWeatherServiceTests
         var result = await _sut.GetWeatherForecastAsync(20);
 
         // Assert
-        result.Should().OnlyContain(f => validSummaries.Contains(f.Summary));
+        result.Should().OnlyContain(f =>
+            !string.IsNullOrEmpty(f.Summary) &&
+            baseLabels.Any(label => f.Summary!.StartsWith(label)));
     }
 
     [Fact]
