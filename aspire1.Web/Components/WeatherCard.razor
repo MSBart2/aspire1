@@ -26,6 +26,45 @@
                     </div>
                 </div>
             </div>
+
+            @if (ShowDiagnostics)
+            {
+                <details class="weather-card-diagnostics mt-3" data-testid="weather-diagnostics">
+                    <summary class="weather-card-diagnostics__summary" data-testid="weather-diagnostics-summary">
+                        🔍 Dev diagnostics
+                    </summary>
+                    <dl class="weather-card-diagnostics__grid mb-0">
+                        <div class="weather-card-diagnostics__item">
+                            <dt>Date key</dt>
+                            <dd data-testid="weather-diagnostics-date-key">@Forecast.Date.ToString("yyyy-MM-dd")</dd>
+                        </div>
+                        <div class="weather-card-diagnostics__item">
+                            <dt>Temperature values</dt>
+                            <dd data-testid="weather-diagnostics-temps">@Forecast.TemperatureC°C / @Forecast.TemperatureF°F</dd>
+                        </div>
+                        <div class="weather-card-diagnostics__item">
+                            <dt>Humidity value</dt>
+                            <dd data-testid="weather-diagnostics-humidity">@GetHumidityDiagnostic()</dd>
+                        </div>
+                        <div class="weather-card-diagnostics__item">
+                            <dt>Source / cache</dt>
+                            <dd data-testid="weather-diagnostics-source">@GetSourceDiagnostic()</dd>
+                        </div>
+                        <div class="weather-card-diagnostics__item">
+                            <dt>Retrieved</dt>
+                            <dd data-testid="weather-diagnostics-retrieved">@GetRetrievedAtDiagnostic()</dd>
+                        </div>
+                        <div class="weather-card-diagnostics__item weather-card-diagnostics__item--wide">
+                            <dt>Feature flags</dt>
+                            <dd data-testid="weather-diagnostics-flags">@GetFlagDiagnostic()</dd>
+                        </div>
+                        <div class="weather-card-diagnostics__item weather-card-diagnostics__item--wide">
+                            <dt>Metrics</dt>
+                            <dd data-testid="weather-diagnostics-metrics">@GetMetricDiagnostic()</dd>
+                        </div>
+                    </dl>
+                </details>
+            }
         </div>
     </div>
 }
@@ -37,6 +76,15 @@
     [Parameter]
     public bool ShowHumidity { get; set; }
 
+    [Parameter]
+    public bool ShowDiagnostics { get; set; }
+
+    [Parameter]
+    public bool WeatherForecastEnabled { get; set; }
+
+    [Parameter]
+    public WeatherDiagnostics? Diagnostics { get; set; }
+
     private string GetTemperatureClass(int temperatureC) =>
         temperatureC switch
         {
@@ -46,4 +94,27 @@
             >= 26 and <= 40 => "weather-card--hot",
             _ => "weather-card--scorching"
         };
+
+    private string GetHumidityDiagnostic() =>
+        ShowHumidity
+            ? Forecast?.Humidity > 0
+                ? $"{Forecast.Humidity}%"
+                : "not available"
+            : "hidden by WeatherHumidity flag";
+
+    private string GetSourceDiagnostic() =>
+        Diagnostics is null
+            ? "not available from API"
+            : $"{Diagnostics.Source} ({Diagnostics.CacheStatus})";
+
+    private string GetRetrievedAtDiagnostic() =>
+        Diagnostics?.RetrievedAtUtc.ToString("yyyy-MM-dd HH:mm:ss 'UTC'") ?? "not available from API";
+
+    private string GetFlagDiagnostic() =>
+        $"WeatherForecast: {WeatherForecastEnabled.ToString().ToLowerInvariant()} · WeatherHumidity: {ShowHumidity.ToString().ToLowerInvariant()} · WeatherDiagnostics: {ShowDiagnostics.ToString().ToLowerInvariant()}";
+
+    private string GetMetricDiagnostic() =>
+        Diagnostics?.MetricNames is { Length: > 0 } metricNames
+            ? string.Join(" · ", metricNames)
+            : "not discoverable";
 }

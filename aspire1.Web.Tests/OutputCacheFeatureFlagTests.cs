@@ -12,12 +12,6 @@ namespace aspire1.Web.Tests;
 /// <summary>
 /// Tests verifying that Weather.razor renders the correct output based on feature flag state,
 /// with no stale page-level output cache interfering.
-///
-/// Background: Weather.razor previously had [OutputCache(Duration = 5)] which cached the
-/// entire rendered page for 5 seconds. Feature flag toggles had no visible effect until the
-/// cache expired. The attribute has been removed. These Bunit component tests render the
-/// actual component and assert HTML output, providing a real regression guard that would
-/// catch any accidental re-introduction of [OutputCache] on this page.
 /// </summary>
 public class OutputCacheFeatureFlagTests : BunitContext
 {
@@ -29,13 +23,12 @@ public class OutputCacheFeatureFlagTests : BunitContext
         featureManager.IsEnabledAsync("WeatherForecast").Returns(Task.FromResult(false));
 
         Services.AddSingleton(featureManager);
-        Services.AddSingleton(BuildFakeWeatherApiClient([]));
+        Services.AddSingleton(BuildFakeWeatherApiClient([], null));
 
-        // Act — render Weather.razor with the feature flag disabled
-        // WeatherApiClient.GetWeatherAsync() is never called on this code path
+        // Act — WeatherApiClient.GetWeatherAsync() is never called on this code path
         var cut = Render<Weather>();
 
-        // Assert — the "Feature Disabled" alert must appear in the rendered HTML
+        // Assert
         cut.Markup.Should().Contain("Feature Disabled",
             "the 'Feature Disabled' heading must be rendered when the WeatherForecast flag is off");
         cut.FindAll("[data-testid='weather-card']").Should().BeEmpty(
@@ -45,22 +38,24 @@ public class OutputCacheFeatureFlagTests : BunitContext
     [Fact]
     public void WeatherForecastFlag_WhenEnabled_DoesNotRenderFeatureDisabledAlert()
     {
-        // Arrange — IFeatureManager returns true for WeatherForecast, false for WeatherHumidity
+        // Arrange
         var featureManager = Substitute.For<IFeatureManager>();
         featureManager.IsEnabledAsync("WeatherForecast").Returns(Task.FromResult(true));
         featureManager.IsEnabledAsync("WeatherHumidity").Returns(Task.FromResult(false));
+        featureManager.IsEnabledAsync("WeatherDiagnostics").Returns(Task.FromResult(false));
 
         var fakeForecasts = new[]
         {
             new WeatherForecast(DateOnly.FromDateTime(DateTime.Today), 20, "Sunny", 50)
         };
-        Services.AddSingleton(featureManager);
-        Services.AddSingleton(BuildFakeWeatherApiClient(fakeForecasts));
 
-        // Act — render Weather.razor with the feature flag enabled
+        Services.AddSingleton(featureManager);
+        Services.AddSingleton(BuildFakeWeatherApiClient(fakeForecasts, null));
+
+        // Act
         var cut = Render<Weather>();
 
-        // Assert — the "Feature Disabled" alert must NOT appear; normal weather output is shown
+        // Assert
         cut.FindAll(".alert-warning").Should().BeEmpty(
             "the 'Feature Disabled' alert must not be rendered when WeatherForecast flag is enabled");
     }
@@ -68,40 +63,88 @@ public class OutputCacheFeatureFlagTests : BunitContext
     [Fact]
     public void WeatherHumidityFlag_WhenDisabled_HumidityInfoNotRendered()
     {
-        // Arrange — WeatherForecast enabled, WeatherHumidity disabled
+        // Arrange
         var featureManager = Substitute.For<IFeatureManager>();
         featureManager.IsEnabledAsync("WeatherForecast").Returns(Task.FromResult(true));
         featureManager.IsEnabledAsync("WeatherHumidity").Returns(Task.FromResult(false));
+        featureManager.IsEnabledAsync("WeatherDiagnostics").Returns(Task.FromResult(false));
 
         var fakeForecasts = new[]
         {
-            // High humidity value — will only appear in HTML if ShowHumidity=true is passed to WeatherCard
             new WeatherForecast(DateOnly.FromDateTime(DateTime.Today), 20, "Sunny", 80)
         };
+
         Services.AddSingleton(featureManager);
-        Services.AddSingleton(BuildFakeWeatherApiClient(fakeForecasts));
+        Services.AddSingleton(BuildFakeWeatherApiClient(fakeForecasts, null));
 
         // Act
         var cut = Render<Weather>();
 
-        // Assert — humidity-info div must be absent when WeatherHumidity flag is off
+        // Assert
         cut.FindAll(".humidity-info").Should().BeEmpty(
             "humidity info must not render in weather cards when the WeatherHumidity flag is disabled");
     }
 
     [Fact]
+    public void WeatherDiagnosticsFlag_WhenDisabled_DiagnosticsDisclosureNotRendered()
+    {
+        // Arrange
+        var featureManager = Substitute.For<IFeatureManager>();
+        featureManager.IsEnabledAsync("WeatherForecast").Returns(Task.FromResult(true));
+        featureManager.IsEnabledAsync("WeatherHumidity").Returns(Task.FromResult(true));
+        featureManager.IsEnabledAsync("WeatherDiagnostics").Returns(Task.FromResult(false));
+
+        var fakeForecasts = new[]
+        {
+            new WeatherForecast(DateOnly.FromDateTime(DateTime.Today), 20, "Sunny", 80)
+        };
+        var diagnostics = new WeatherDiagnostics("hit", "Redis cache", DateTimeOffset.UtcNow, ["weather.api.calls", "cache.hits"]);
+
+        Services.AddSingleton(featureManager);
+        Services.AddSingleton(BuildFakeWeatherApiClient(fakeForecasts, diagnostics));
+
+        // Act
+        var cut = Render<Weather>();
+
+        // Assert
+        cut.FindAll("[data-testid='weather-diagnostics']").Should().BeEmpty(
+            "diagnostics must stay invisible when the WeatherDiagnostics feature flag is off");
+    }
+
+    [Fact]
+    public void WeatherDiagnosticsFlag_WhenEnabled_RendersDiagnosticsDisclosure()
+    {
+        // Arrange
+        var featureManager = Substitute.For<IFeatureManager>();
+        featureManager.IsEnabledAsync("WeatherForecast").Returns(Task.FromResult(true));
+        featureManager.IsEnabledAsync("WeatherHumidity").Returns(Task.FromResult(true));
+        featureManager.IsEnabledAsync("WeatherDiagnostics").Returns(Task.FromResult(true));
+
+        var fakeForecasts = new[]
+        {
+            new WeatherForecast(DateOnly.FromDateTime(DateTime.Today), 20, "Sunny", 80)
+        };
+        var diagnostics = new WeatherDiagnostics("miss", "fresh generation", DateTimeOffset.UtcNow, ["weather.api.calls", "cache.misses"]);
+
+        Services.AddSingleton(featureManager);
+        Services.AddSingleton(BuildFakeWeatherApiClient(fakeForecasts, diagnostics));
+
+        // Act
+        var cut = Render<Weather>();
+
+        // Assert
+        cut.Find("[data-testid='weather-diagnostics']").OuterHtml.Should().Contain("Dev diagnostics");
+        cut.Find("[data-testid='weather-diagnostics-source']").TextContent.Should().Be("fresh generation (miss)");
+    }
+
+    [Fact]
     public void WeatherForecastFlag_RaceCondition_FeatureFlagEnabledButApiReturns503_ShowsEmptyList()
     {
-        // Arrange — Issue #11 race condition scenario:
-        // Frontend still thinks WeatherForecast is enabled (hasn't refreshed config in 30s)
-        // But API already returned 503 (feature disabled on backend, already refreshed)
-        // WeatherApiClient should gracefully return empty array, allowing component to render empty state
-        // (the component itself shows "Feature Disabled" only when ITS feature flag check returns false,
-        // not when the API returns no data)
-        
+        // Arrange — frontend flag says enabled, backend already returns 503.
         var featureManager = Substitute.For<IFeatureManager>();
         featureManager.IsEnabledAsync("WeatherForecast").Returns(Task.FromResult(true));
         featureManager.IsEnabledAsync("WeatherHumidity").Returns(Task.FromResult(false));
+        featureManager.IsEnabledAsync("WeatherDiagnostics").Returns(Task.FromResult(false));
 
         var handler = new FakeHttpMessageHandler503();
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
@@ -113,24 +156,20 @@ public class OutputCacheFeatureFlagTests : BunitContext
         Services.AddSingleton(featureManager);
         Services.AddSingleton(client);
 
-        // Act — render Weather.razor with this race condition
+        // Act
         var cut = Render<Weather>();
 
-        // Assert — should not crash; WeatherApiClient returns empty array gracefully,
-        // component renders empty list instead of crashing
+        // Assert
         cut.Markup.Should().Contain("Weather Forecast", "heading should render");
         cut.FindAll("[data-testid='weather-card']").Should().BeEmpty(
             "no weather cards should appear when API returns no data (race condition handled gracefully)");
-        
-        // Specifically verify no feature-flag-disabled message appears
-        // (since our feature flag check said true, but API returned 503)
         cut.Markup.Should().NotContain("Feature Disabled",
-            "should not show 'Feature Disabled' (our flag check passed, API just returned no data)");
+            "should not show 'Feature Disabled' when the frontend flag still says true");
     }
 
-    private static WeatherApiClient BuildFakeWeatherApiClient(WeatherForecast[] forecasts)
+    private static WeatherApiClient BuildFakeWeatherApiClient(WeatherForecast[] forecasts, WeatherDiagnostics? diagnostics)
     {
-        var json = JsonSerializer.Serialize(forecasts);
+        var json = JsonSerializer.Serialize(new WeatherForecastResponse(forecasts, diagnostics));
         var handler = new FakeHttpMessageHandler(json);
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
         var logger = LoggerFactory
@@ -149,10 +188,6 @@ public class OutputCacheFeatureFlagTests : BunitContext
             });
     }
 
-    /// <summary>
-    /// Handler that returns 503 Service Unavailable, simulating API-side feature flag disabled state.
-    /// Used to test the race condition scenario in issue #11.
-    /// </summary>
     private sealed class FakeHttpMessageHandler503 : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(

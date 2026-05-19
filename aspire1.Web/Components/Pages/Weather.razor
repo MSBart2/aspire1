@@ -26,7 +26,11 @@ else
         @foreach (var forecast in forecasts)
         {
             <div class="col-md-6 col-lg-4">
-                <WeatherCard Forecast="@forecast" ShowHumidity="@showHumidity" />
+                <WeatherCard Forecast="@forecast"
+                             Diagnostics="@diagnostics"
+                             ShowHumidity="@showHumidity"
+                             ShowDiagnostics="@showDiagnostics"
+                             WeatherForecastEnabled="@featureEnabled" />
             </div>
         }
     </div>
@@ -34,8 +38,10 @@ else
 
 @code {
     private WeatherForecast[]? forecasts;
+    private WeatherDiagnostics? diagnostics;
     private bool featureEnabled = true;
     private bool showHumidity = false;
+    private bool showDiagnostics = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -46,7 +52,11 @@ else
         {
             // Check humidity feature flag once for all cards
             showHumidity = await FeatureManager.IsEnabledAsync("WeatherHumidity");
-            forecasts = await WeatherApi.GetWeatherAsync();
+            showDiagnostics = await FeatureManager.IsEnabledAsync("WeatherDiagnostics");
+
+            var weatherResponse = await WeatherApi.GetWeatherAsync();
+            forecasts = weatherResponse.Forecasts;
+            diagnostics = weatherResponse.Diagnostics;
         }
     }
 }
