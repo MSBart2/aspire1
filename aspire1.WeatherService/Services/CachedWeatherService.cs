@@ -71,16 +71,18 @@ public class CachedWeatherService
 
     private static WeatherForecast[] GenerateForecasts(int count)
     {
-        var summaries = new[] { "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching" };
-
         return Enumerable.Range(1, count).Select(index =>
-            new WeatherForecast
+        {
+            var temperatureC = Random.Shared.Next(-20, 55);
+            var humidity = Random.Shared.Next(20, 95); // Generate humidity between 20% and 94% (inclusive)
+            return new WeatherForecast
             (
                 DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                Random.Shared.Next(-20, 55),
-                summaries[Random.Shared.Next(summaries.Length)],
-                Random.Shared.Next(20, 95) // Generate humidity between 20% and 94% (inclusive)
-            ))
-            .ToArray();
+                temperatureC,
+                WeatherSummaryFormatter.GetSummary(temperatureC, humidity),
+                humidity
+            );
+        })
+        .ToArray();
     }
 }
