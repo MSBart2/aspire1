@@ -16,7 +16,7 @@ public class CachedWeatherService
         _logger = logger;
     }
 
-    public async Task<WeatherForecast[]> GetWeatherForecastAsync(
+    public async Task<CachedWeatherResult> GetWeatherForecastAsync(
         int maxItems = 10,
         CancellationToken cancellationToken = default)
     {
@@ -31,7 +31,10 @@ public class CachedWeatherService
                 _logger.LogInformation("Cache HIT for weather forecast (maxItems={MaxItems})", maxItems);
                 ApplicationMetrics.CacheHits.Add(1,
                     new KeyValuePair<string, object?>("entity", "weather"));
-                return JsonSerializer.Deserialize<WeatherForecast[]>(cachedData)!;
+                return new CachedWeatherResult(
+                    JsonSerializer.Deserialize<WeatherForecast[]>(cachedData)!,
+                    CacheStatus: "hit",
+                    Source: "Redis cache");
             }
 
             _logger.LogInformation("Cache MISS for weather forecast (maxItems={MaxItems})", maxItems);
@@ -66,7 +69,10 @@ public class CachedWeatherService
             _logger.LogWarning(ex, "Cache write failed, continuing without cache");
         }
 
-        return forecasts;
+        return new CachedWeatherResult(
+            forecasts,
+            CacheStatus: "miss",
+            Source: "fresh generation");
     }
 
     private static WeatherForecast[] GenerateForecasts(int count)

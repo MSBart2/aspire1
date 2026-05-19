@@ -21,7 +21,7 @@ public class CachedWeatherServiceTests
     }
 
     [Fact]
-    public async Task GetWeatherForecastAsync_CacheHit_ReturnsCachedData()
+    public async Task GetWeatherForecastAsync_CacheHit_ReturnsCachedDataWithDiagnostics()
     {
         // Arrange
         var expectedForecasts = new[]
@@ -39,17 +39,19 @@ public class CachedWeatherServiceTests
         var result = await _sut.GetWeatherForecastAsync(5);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().HaveCount(2);
-        result[0].Summary.Should().Be("Sunny");
-        result[1].Summary.Should().Be("Hot");
+        result.Forecasts.Should().NotBeNull();
+        result.Forecasts.Should().HaveCount(2);
+        result.Forecasts[0].Summary.Should().Be("Sunny");
+        result.Forecasts[1].Summary.Should().Be("Hot");
+        result.CacheStatus.Should().Be("hit");
+        result.Source.Should().Be("Redis cache");
 
         await _mockCache.Received(1).GetAsync("api:weather:forecast:5", Arg.Any<CancellationToken>());
         await _mockCache.DidNotReceive().SetAsync(Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<DistributedCacheEntryOptions>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task GetWeatherForecastAsync_CacheMiss_GeneratesAndCachesData()
+    public async Task GetWeatherForecastAsync_CacheMiss_GeneratesAndCachesDataWithDiagnostics()
     {
         // Arrange
         _mockCache.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -59,9 +61,11 @@ public class CachedWeatherServiceTests
         var result = await _sut.GetWeatherForecastAsync(10);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().HaveCount(10);
-        result.Should().OnlyContain(f => f.Date > DateOnly.FromDateTime(DateTime.Now));
+        result.Forecasts.Should().NotBeNull();
+        result.Forecasts.Should().HaveCount(10);
+        result.Forecasts.Should().OnlyContain(f => f.Date > DateOnly.FromDateTime(DateTime.Now));
+        result.CacheStatus.Should().Be("miss");
+        result.Source.Should().Be("fresh generation");
 
         await _mockCache.Received(1).GetAsync("api:weather:forecast:10", Arg.Any<CancellationToken>());
         await _mockCache.Received(1).SetAsync(
@@ -72,7 +76,7 @@ public class CachedWeatherServiceTests
     }
 
     [Fact]
-    public async Task GetWeatherForecastAsync_CacheReadFails_GeneratesData()
+    public async Task GetWeatherForecastAsync_CacheReadFails_GeneratesFreshData()
     {
         // Arrange
         _mockCache.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -82,12 +86,14 @@ public class CachedWeatherServiceTests
         var result = await _sut.GetWeatherForecastAsync(5);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().HaveCount(5);
+        result.Forecasts.Should().NotBeNull();
+        result.Forecasts.Should().HaveCount(5);
+        result.CacheStatus.Should().Be("miss");
+        result.Source.Should().Be("fresh generation");
     }
 
     [Fact]
-    public async Task GetWeatherForecastAsync_CacheWriteFails_ReturnsData()
+    public async Task GetWeatherForecastAsync_CacheWriteFails_ReturnsFreshData()
     {
         // Arrange
         _mockCache.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -99,8 +105,10 @@ public class CachedWeatherServiceTests
         var result = await _sut.GetWeatherForecastAsync(3);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Should().HaveCount(3);
+        result.Forecasts.Should().NotBeNull();
+        result.Forecasts.Should().HaveCount(3);
+        result.CacheStatus.Should().Be("miss");
+        result.Source.Should().Be("fresh generation");
     }
 
     [Theory]
@@ -118,7 +126,7 @@ public class CachedWeatherServiceTests
         var result = await _sut.GetWeatherForecastAsync(count);
 
         // Assert
-        result.Should().HaveCount(count);
+        result.Forecasts.Should().HaveCount(count);
     }
 
     [Fact]
@@ -132,8 +140,8 @@ public class CachedWeatherServiceTests
         var result = await _sut.GetWeatherForecastAsync(10);
 
         // Assert
-        result.Should().OnlyContain(f => f.TemperatureC >= -20 && f.TemperatureC < 55);
-        result.Should().OnlyContain(f => f.TemperatureF == (int)Math.Round(f.TemperatureC * 1.8 + 32));
+        result.Forecasts.Should().OnlyContain(f => f.TemperatureC >= -20 && f.TemperatureC < 55);
+        result.Forecasts.Should().OnlyContain(f => f.TemperatureF == (int)Math.Round(f.TemperatureC * 1.8 + 32));
     }
 
     [Theory]
@@ -166,7 +174,7 @@ public class CachedWeatherServiceTests
         var result = await _sut.GetWeatherForecastAsync(20);
 
         // Assert
-        result.Should().OnlyContain(f => validSummaries.Contains(f.Summary));
+        result.Forecasts.Should().OnlyContain(f => validSummaries.Contains(f.Summary));
     }
 
     [Fact]
@@ -180,6 +188,6 @@ public class CachedWeatherServiceTests
         var result = await _sut.GetWeatherForecastAsync(10);
 
         // Assert
-        result.Should().OnlyContain(f => f.Humidity >= 20 && f.Humidity < 95);
+        result.Forecasts.Should().OnlyContain(f => f.Humidity >= 20 && f.Humidity < 95);
     }
 }

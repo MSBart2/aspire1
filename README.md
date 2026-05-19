@@ -246,10 +246,11 @@ Hit `/weather` and enjoy the redesigned card-based UI! Each day's forecast is di
 - 🌡️ **Temperature** - Both Celsius and Fahrenheit
 - ☀️ **Weather Summary** - Descriptive conditions
 - 💧 **Humidity** - Real-time humidity percentage (controlled by feature flag)
+- 🔍 **Developer diagnostics** - Optional disclosure with cache/source provenance, retrieval time, active flags, and discoverable metric names
 
 The cards feature smooth hover effects and automatically adjust to your screen size (3 columns on desktop, 2 on tablet, 1 on mobile).
 
-**Feature Flag Control:** The humidity display is controlled by the `WeatherHumidity` feature flag—toggle it on/off without redeploying!
+**Feature Flag Control:** The humidity display is controlled by the `WeatherHumidity` feature flag, and the diagnostics disclosure is controlled by `WeatherDiagnostics`—toggle either on/off without redeploying!
 
 The API tracks:
 
@@ -273,6 +274,11 @@ az appconfig kv set --name <your-appconfig> \
   --key ".appconfig.featureflag/WeatherHumidity" \
   --value '{"enabled":false}'
 
+# Enable the developer diagnostics panel (forensics mode)
+az appconfig kv set --name <your-appconfig> \
+  --key ".appconfig.featureflag/WeatherDiagnostics" \
+  --value '{"enabled":true}'
+
 # Watch the changes take effect within 30 seconds 🔥
 ```
 
@@ -281,6 +287,7 @@ az appconfig kv set --name <your-appconfig> \
 - `WeatherForecast` - Controls entire weather API availability
 - `DetailedHealth` - Controls health endpoint detail level
 - `WeatherHumidity` - Controls humidity data display in the UI
+- `WeatherDiagnostics` - Controls the developer-only weather diagnostics disclosure in the UI
 
 ### 4. **Cache Performance Theater**
 
@@ -289,6 +296,8 @@ The weather API uses Redis caching with a 5-minute TTL. Watch the cache metrics:
 - First call: Cache MISS (generates data)
 - Next ~10 calls: Cache HIT (blazing fast 🏎️)
 - After 5 minutes: Cache MISS again (the circle of life)
+
+When `WeatherDiagnostics` is enabled, each weather card can surface that provenance honestly. The UI never guesses: cache/source labels and retrieval time come from the API response envelope, and if diagnostics metadata is unavailable the panel says so instead of making stuff up.
 
 ---
 

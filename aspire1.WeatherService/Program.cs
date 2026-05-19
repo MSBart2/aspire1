@@ -136,7 +136,8 @@ app.MapGet("/weatherforecast", async (CachedWeatherService weatherService, IFeat
         );
     }
 
-    var forecasts = await weatherService.GetWeatherForecastAsync(10, cancellationToken);
+    var weatherResult = await weatherService.GetWeatherForecastAsync(10, cancellationToken);
+    var forecasts = weatherResult.Forecasts;
 
     // Check if humidity feature is enabled
     var humidityEnabled = await featureManager.IsEnabledAsync("WeatherHumidity");
@@ -158,7 +159,27 @@ app.MapGet("/weatherforecast", async (CachedWeatherService weatherService, IFeat
             new KeyValuePair<string, object?>("temperature_range", ApplicationMetrics.GetTemperatureRange(forecast.TemperatureC)));
     }
 
-    return Results.Ok(forecasts);
+    var metricNames = new List<string>
+    {
+        "weather.api.calls",
+        weatherResult.CacheStatus == "hit" ? "cache.hits" : "cache.misses",
+        "api.call.duration"
+    };
+
+    if (forecasts.Any(f => f.Summary?.Contains("Sunny", StringComparison.OrdinalIgnoreCase) == true))
+    {
+        metricNames.Add("weather.sunny.count");
+    }
+
+    var response = new aspire1.Contracts.WeatherForecastResponse(
+        forecasts,
+        new aspire1.Contracts.WeatherDiagnostics(
+            weatherResult.CacheStatus,
+            weatherResult.Source,
+            DateTimeOffset.UtcNow,
+            [.. metricNames]));
+
+    return Results.Ok(response);
 })
 .WithName("GetWeatherForecast");
 

@@ -88,6 +88,65 @@ h1:focus {
     font-size: 0.9rem;
 }
 
+.weather-card-diagnostics {
+    border-top: 1px solid rgba(27, 110, 194, 0.15);
+    padding-top: 0.85rem;
+}
+
+.weather-card-diagnostics__summary {
+    cursor: pointer;
+    color: #0d6efd;
+    font-size: 0.95rem;
+    font-weight: 600;
+    list-style: none;
+}
+
+.weather-card-diagnostics__summary::-webkit-details-marker {
+    display: none;
+}
+
+.weather-card-diagnostics__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.85rem;
+    font-family: var(--bs-font-monospace, "Cascadia Code", Consolas, monospace);
+    font-size: 0.82rem;
+}
+
+.weather-card-diagnostics__item {
+    padding: 0.65rem 0.75rem;
+    border-radius: 0.5rem;
+    background-color: #f8fbff;
+    border: 1px solid rgba(13, 110, 253, 0.08);
+    min-width: 0;
+}
+
+.weather-card-diagnostics__item--wide {
+    grid-column: 1 / -1;
+}
+
+.weather-card-diagnostics__item dt {
+    margin-bottom: 0.35rem;
+    color: #495057;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.weather-card-diagnostics__item dd {
+    margin: 0;
+    color: #212529;
+    word-break: break-word;
+}
+
+@media (max-width: 575.98px) {
+    .weather-card-diagnostics__grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Weather Animation States */
 
 /* Freezing: < 0°C - Falling Snowflakes */
